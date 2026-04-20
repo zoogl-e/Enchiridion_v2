@@ -1,0 +1,129 @@
+package net.zoogle.enchiridion.client.render;
+
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.ResourceLocation;
+import net.zoogle.enchiridion.Enchiridion;
+import net.zoogle.enchiridion.api.BookPage;
+import net.zoogle.enchiridion.api.BookSpread;
+
+import javax.imageio.ImageIO;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
+final class BookPageTexturePipeline {
+    private static final ResourceLocation BASE_TEXTURE = ResourceLocation.fromNamespaceAndPath(Enchiridion.MODID, "textures/gui/enchiridion.png");
+    private static final String LEFT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_left";
+    private static final String RIGHT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_right";
+    private static final float UV_SPACE_SIZE = 16.0f;
+
+    // Dedicated readable plane UVs from the model
+    private static final float LEFT_U0 = 11.7875f;
+    private static final float LEFT_V0 = 10.84375f;
+    private static final float LEFT_U1 = 16.0f;
+    private static final float LEFT_V1 = 16.0f;
+
+    private static final float RIGHT_U0 = 11.53125f;
+    private static final float RIGHT_V0 = 10.84375f;
+    private static final float RIGHT_U1 = 16.0f;
+    private static final float RIGHT_V1 = 16.0f;
+
+    // Hook for future magical polish pass (glow/intensity)
+    private static final int MAGIC_TEXT_PANEL_ALPHA = 0;
+
+    private final PageCanvasRenderer pageCanvasRenderer = new PageCanvasRenderer();
+    private final BufferedImage transparentCanvas;
+    private final DynamicTexture leftDynamicTexture;
+    private final DynamicTexture rightDynamicTexture;
+    private final ResourceLocation leftTextureLocation;
+    private final ResourceLocation rightTextureLocation;
+
+    private int lastSpreadIndex = Integer.MIN_VALUE;
+    private int lastTextAlpha = Integer.MIN_VALUE;
+
+    BookPageTexturePipeline() {
+        this.transparentCanvas = new BufferedImage(512, 512, BufferedImage.TYPE_INT_ARGB);
+        this.leftDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
+        this.rightDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
+        this.leftTextureLocation = Minecraft.getInstance().getTextureManager().register(LEFT_TEXTURE_PREFIX, leftDynamicTexture);
+        this.rightTextureLocation = Minecraft.getInstance().getTextureManager().register(RIGHT_TEXTURE_PREFIX, rightDynamicTexture);
+    }
+
+    public TextureSet textureSetFor(BookSpread spread, int spreadIndex, float textAlpha) {
+        int textAlphaKey = Math.clamp(Math.round(Math.clamp(textAlpha, 0.0f, 1.0f) * 255.0f), 0, 255);
+        if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha) {
+            updateMagicPlaneTextures(spread, textAlpha);
+            lastSpreadIndex = spreadIndex;
+            lastTextAlpha = textAlphaKey;
+        }
+        return new TextureSet(BASE_TEXTURE, leftTextureLocation, rightTextureLocation);
+    }
+
+    private void updateMagicPlaneTextures(BookSpread spread, float textAlpha) {
+        updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, 0);
+        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, PageCanvasRenderer.RIGHT_PAGE_INSET);
+    }
+
+    private void updatePlaneTexture(DynamicTexture targetTexture, BookPage page, float u0, float v0, float u1, float v1, float textAlpha, int horizontalInset) {
+        BufferedImage composed = copyImage(transparentCanvas);
+        Graphics2D graphics = composed.createGraphics();
+
+        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setFont(new Font("Serif", Font.PLAIN, 14));
+
+        int regionX = uvToPixelX(u0, composed.getWidth());
+        int regionY = uvToPixelY(v0, composed.getHeight());
+        int regionW = Math.max(4, uvToPixelX(u1, composed.getWidth()) - regionX);
+        int regionH = Math.max(4, uvToPixelY(v1, composed.getHeight()) - regionY);
+
+        if (MAGIC_TEXT_PANEL_ALPHA > 0) {
+            graphics.setColor(new Color(230, 220, 200, MAGIC_TEXT_PANEL_ALPHA));
+            graphics.fillRect(regionX, regionY, regionW, regionH);
+        }
+
+        pageCanvasRenderer.renderPageTextOnlyToGraphics2D(graphics, page, regionX, regionY, regionW, regionH, textAlpha, horizontalInset);
+        graphics.dispose();
+
+        uploadBufferedImage(targetTexture, composed);
+    }
+
+    private void uploadBufferedImage(DynamicTexture targetTexture, BufferedImage image) {
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "png", out);
+            out.flush();
+            try (ByteArrayInputStream in = new ByteArrayInputStream(out.toByteArray())) {
+                NativeImage pixels = NativeImage.read(in);
+                targetTexture.setPixels(pixels);
+                targetTexture.upload();
+            }
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed to upload dynamic magical text texture", exception);
+        }
+    }
+
+    private static BufferedImage copyImage(BufferedImage source) {
+        BufferedImage copy = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = copy.createGraphics();
+        graphics.drawImage(source, 0, 0, null);
+        graphics.dispose();
+        return copy;
+    }
+
+    private static int uvToPixelX(float uv, int width) {
+        return Math.round((uv / UV_SPACE_SIZE) * width);
+    }
+
+    private static int uvToPixelY(float uv, int height) {
+        return Math.round((uv / UV_SPACE_SIZE) * height);
+    }
+
+    record TextureSet(ResourceLocation baseTexture, ResourceLocation magicLeftTexture, ResourceLocation magicRightTexture) {}
+}
