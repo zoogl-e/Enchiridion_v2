@@ -5,30 +5,17 @@ import java.util.Objects;
 
 public record LevelRpgJournalSnapshot(
         String journalTitle,
-        String introText,
-        String overviewTitle,
-        String overviewText,
-        String skillsTitle,
-        List<JournalSkillEntry> skills,
-        String currentFocusTitle,
-        String currentFocusText,
-        JournalSkillEntry focusedSkill,
-        String milestonesTitle,
-        List<JournalMilestoneEntry> focusedSkillMilestones
+        String frontMatterTitle,
+        String frontMatterText,
+        JournalCharacterSheet characterSheet,
+        List<JournalSkillEntry> skills
 ) {
     public LevelRpgJournalSnapshot {
         Objects.requireNonNull(journalTitle, "journalTitle");
-        Objects.requireNonNull(introText, "introText");
-        Objects.requireNonNull(overviewTitle, "overviewTitle");
-        Objects.requireNonNull(overviewText, "overviewText");
-        Objects.requireNonNull(skillsTitle, "skillsTitle");
+        Objects.requireNonNull(frontMatterTitle, "frontMatterTitle");
+        Objects.requireNonNull(frontMatterText, "frontMatterText");
+        Objects.requireNonNull(characterSheet, "characterSheet");
         Objects.requireNonNull(skills, "skills");
-        Objects.requireNonNull(currentFocusTitle, "currentFocusTitle");
-        Objects.requireNonNull(currentFocusText, "currentFocusText");
-        Objects.requireNonNull(focusedSkill, "focusedSkill");
-        Objects.requireNonNull(milestonesTitle, "milestonesTitle");
-        Objects.requireNonNull(focusedSkillMilestones, "focusedSkillMilestones");
         skills = List.copyOf(skills);
-        focusedSkillMilestones = List.copyOf(focusedSkillMilestones);
     }
 }

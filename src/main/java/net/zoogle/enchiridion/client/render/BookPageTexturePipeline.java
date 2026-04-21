@@ -6,6 +6,8 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.zoogle.enchiridion.Enchiridion;
 import net.zoogle.enchiridion.api.BookPage;
+import net.zoogle.enchiridion.api.BookPageElement;
+import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
 
 import javax.imageio.ImageIO;
@@ -19,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 final class BookPageTexturePipeline {
+    private static final int DYNAMIC_TEXTURE_SIZE = 512;
     private static final ResourceLocation BASE_TEXTURE = ResourceLocation.fromNamespaceAndPath(Enchiridion.MODID, "textures/gui/enchiridion.png");
     private static final String LEFT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_left";
     private static final String RIGHT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_right";
@@ -29,7 +32,6 @@ final class BookPageTexturePipeline {
     private static final float LEFT_V0 = 10.84375f;
     private static final float LEFT_U1 = 16.0f;
     private static final float LEFT_V1 = 16.0f;
-
     private static final float RIGHT_U0 = 11.53125f;
     private static final float RIGHT_V0 = 10.84375f;
     private static final float RIGHT_U1 = 16.0f;
@@ -47,31 +49,101 @@ final class BookPageTexturePipeline {
 
     private int lastSpreadIndex = Integer.MIN_VALUE;
     private int lastTextAlpha = Integer.MIN_VALUE;
+    private long lastAnimationBucket = Long.MIN_VALUE;
+    private int lastGlitchStrength = Integer.MIN_VALUE;
+    private int lastFocusedPageSide = Integer.MIN_VALUE;
+    private int lastInteractiveStateKey = Integer.MIN_VALUE;
 
     BookPageTexturePipeline() {
-        this.transparentCanvas = new BufferedImage(512, 512, BufferedImage.TYPE_INT_ARGB);
+        this.transparentCanvas = new BufferedImage(DYNAMIC_TEXTURE_SIZE, DYNAMIC_TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
         this.leftDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
         this.rightDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
         this.leftTextureLocation = Minecraft.getInstance().getTextureManager().register(LEFT_TEXTURE_PREFIX, leftDynamicTexture);
         this.rightTextureLocation = Minecraft.getInstance().getTextureManager().register(RIGHT_TEXTURE_PREFIX, rightDynamicTexture);
     }
 
-    public TextureSet textureSetFor(BookSpread spread, int spreadIndex, float textAlpha) {
+    static RenderRegionSize renderRegionSize(BookPageSide pageSide) {
+        float u0 = pageSide == BookPageSide.LEFT ? LEFT_U0 : RIGHT_U0;
+        float v0 = pageSide == BookPageSide.LEFT ? LEFT_V0 : RIGHT_V0;
+        float u1 = pageSide == BookPageSide.LEFT ? LEFT_U1 : RIGHT_U1;
+        float v1 = pageSide == BookPageSide.LEFT ? LEFT_V1 : RIGHT_V1;
+        int regionX = uvToPixelX(u0, DYNAMIC_TEXTURE_SIZE);
+        int regionY = uvToPixelY(v0, DYNAMIC_TEXTURE_SIZE);
+        int regionW = Math.max(4, uvToPixelX(u1, DYNAMIC_TEXTURE_SIZE) - regionX);
+        int regionH = Math.max(4, uvToPixelY(v1, DYNAMIC_TEXTURE_SIZE) - regionY);
+        return new RenderRegionSize(regionW, regionH);
+    }
+
+    public TextureSet textureSetFor(
+            BookSpread spread,
+            int spreadIndex,
+            float textAlpha,
+            float glitchStrength,
+            BookPageSide focusedPageSide,
+            BookPageElement.InteractiveTextElement leftHoveredInteractiveElement,
+            BookPageElement.InteractiveTextElement rightHoveredInteractiveElement
+    ) {
         int textAlphaKey = Math.clamp(Math.round(Math.clamp(textAlpha, 0.0f, 1.0f) * 255.0f), 0, 255);
-        if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha) {
-            updateMagicPlaneTextures(spread, textAlpha);
+        int glitchStrengthKey = Math.clamp(Math.round(Math.clamp(glitchStrength, 0.0f, 1.0f) * 255.0f), 0, 255);
+        int focusedPageSideKey = focusedPageSide == null ? -1 : focusedPageSide.ordinal();
+        int interactiveStateKey = 31 * interactiveElementKey(leftHoveredInteractiveElement) + interactiveElementKey(rightHoveredInteractiveElement);
+        long animationBucket = currentAnimationBucket();
+        if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha || animationBucket != lastAnimationBucket || glitchStrengthKey != lastGlitchStrength || focusedPageSideKey != lastFocusedPageSide || interactiveStateKey != lastInteractiveStateKey) {
+            updateMagicPlaneTextures(
+                    spread,
+                    spreadIndex,
+                    textAlpha,
+                    glitchStrength,
+                    focusedPageSide,
+                    leftHoveredInteractiveElement,
+                    rightHoveredInteractiveElement
+            );
             lastSpreadIndex = spreadIndex;
             lastTextAlpha = textAlphaKey;
+            lastAnimationBucket = animationBucket;
+            lastGlitchStrength = glitchStrengthKey;
+            lastFocusedPageSide = focusedPageSideKey;
+            lastInteractiveStateKey = interactiveStateKey;
         }
         return new TextureSet(BASE_TEXTURE, leftTextureLocation, rightTextureLocation);
     }
 
-    private void updateMagicPlaneTextures(BookSpread spread, float textAlpha) {
-        updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, 0);
-        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, PageCanvasRenderer.RIGHT_PAGE_INSET);
+    private void updateMagicPlaneTextures(
+            BookSpread spread,
+            int spreadIndex,
+            float textAlpha,
+            float glitchStrength,
+            BookPageSide focusedPageSide,
+            BookPageElement.InteractiveTextElement leftHoveredInteractiveElement,
+            BookPageElement.InteractiveTextElement rightHoveredInteractiveElement
+    ) {
+        int leftPageNumber = (spreadIndex * 2) + 1;
+        int rightPageNumber = leftPageNumber + 1;
+        float leftFocusStrength = focusedPageSide == BookPageSide.LEFT ? 1.0f : 0.0f;
+        float rightFocusStrength = focusedPageSide == BookPageSide.RIGHT ? 1.0f : 0.0f;
+        updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, focusGlitchStrength(glitchStrength, leftFocusStrength), leftFocusStrength, 0, true, leftPageNumber, leftHoveredInteractiveElement);
+        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, focusGlitchStrength(glitchStrength, rightFocusStrength), rightFocusStrength, PageCanvasRenderer.RIGHT_PAGE_INSET, false, rightPageNumber, rightHoveredInteractiveElement);
     }
 
-    private void updatePlaneTexture(DynamicTexture targetTexture, BookPage page, float u0, float v0, float u1, float v1, float textAlpha, int horizontalInset) {
+    private static float focusGlitchStrength(float baseGlitchStrength, float focusStrength) {
+        return baseGlitchStrength * (0.22f + (focusStrength * 1.15f));
+    }
+
+    private void updatePlaneTexture(
+            DynamicTexture targetTexture,
+            BookPage page,
+            float u0,
+            float v0,
+            float u1,
+            float v1,
+            float textAlpha,
+            float glitchStrength,
+            float focusStrength,
+            int horizontalInset,
+            boolean mirrorHorizontally,
+            Integer pageNumber,
+            BookPageElement.InteractiveTextElement hoveredInteractiveElement
+    ) {
         BufferedImage composed = copyImage(transparentCanvas);
         Graphics2D graphics = composed.createGraphics();
 
@@ -83,13 +155,49 @@ final class BookPageTexturePipeline {
         int regionY = uvToPixelY(v0, composed.getHeight());
         int regionW = Math.max(4, uvToPixelX(u1, composed.getWidth()) - regionX);
         int regionH = Math.max(4, uvToPixelY(v1, composed.getHeight()) - regionY);
+        boolean hasFocusedSide = focusStrength > 0.01f || glitchStrength > 0.01f;
+        float effectiveTextAlpha = focusStrength > 0.01f ? textAlpha : (hasFocusedSide ? textAlpha * 0.38f : textAlpha);
 
         if (MAGIC_TEXT_PANEL_ALPHA > 0) {
             graphics.setColor(new Color(230, 220, 200, MAGIC_TEXT_PANEL_ALPHA));
             graphics.fillRect(regionX, regionY, regionW, regionH);
         }
+        BufferedImage pageImage = new BufferedImage(regionW, regionH, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D pageGraphics = pageImage.createGraphics();
+        pageGraphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        pageGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        pageGraphics.setFont(new Font("Serif", Font.PLAIN, 14));
+        pageCanvasRenderer.renderPageTextOnlyToGraphics2D(
+                pageGraphics,
+                page,
+                0,
+                0,
+                regionW,
+                regionH,
+                effectiveTextAlpha,
+                horizontalInset,
+                pageNumber,
+                glitchStrength,
+                hoveredInteractiveElement
+        );
+        pageGraphics.dispose();
 
-        pageCanvasRenderer.renderPageTextOnlyToGraphics2D(graphics, page, regionX, regionY, regionW, regionH, textAlpha, horizontalInset);
+        if (mirrorHorizontally) {
+            graphics.drawImage(
+                    pageImage,
+                    regionX + regionW,
+                    regionY,
+                    regionX,
+                    regionY + regionH,
+                    0,
+                    0,
+                    pageImage.getWidth(),
+                    pageImage.getHeight(),
+                    null
+            );
+        } else {
+            graphics.drawImage(pageImage, regionX, regionY, null);
+        }
         graphics.dispose();
 
         uploadBufferedImage(targetTexture, composed);
@@ -125,5 +233,27 @@ final class BookPageTexturePipeline {
         return Math.round((uv / UV_SPACE_SIZE) * height);
     }
 
+    private static long currentAnimationBucket() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return 0L;
+        }
+        return minecraft.level.getGameTime() / 3L;
+    }
+
+    private static int interactiveElementKey(BookPageElement.InteractiveTextElement element) {
+        if (element == null) {
+            return 0;
+        }
+        int key = 1;
+        key = 31 * key + element.x();
+        key = 31 * key + element.y();
+        key = 31 * key + element.width();
+        key = 31 * key + element.height();
+        key = 31 * key + element.text().getString().hashCode();
+        return key;
+    }
+
     record TextureSet(ResourceLocation baseTexture, ResourceLocation magicLeftTexture, ResourceLocation magicRightTexture) {}
+    record RenderRegionSize(int width, int height) {}
 }

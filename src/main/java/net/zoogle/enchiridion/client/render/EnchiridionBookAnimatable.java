@@ -17,10 +17,15 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
     private static final RawAnimation OPENING_ANIMATION = rawAnimationFor(BookAnimState.OPENING);
     private static final RawAnimation CLOSING_ANIMATION = rawAnimationFor(BookAnimState.CLOSING);
     private static final RawAnimation IDLE_OPEN_ANIMATION = rawAnimationFor(BookAnimState.IDLE_OPEN);
+    private static final RawAnimation IDLE_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.IDLE_SKILLTREE);
     private static final RawAnimation FLIP_NEXT_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_NEXT);
     private static final RawAnimation FLIP_PREV_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_PREV);
+    private static final RawAnimation FLIP_NEXT_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_NEXT_SKILLTREE);
+    private static final RawAnimation FLIP_PREV_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_PREV_SKILLTREE);
     private static final RawAnimation RIFFLE_NEXT_ANIMATION = rawAnimationFor(BookAnimState.RIFFLING_NEXT);
     private static final RawAnimation RIFFLE_PREV_ANIMATION = rawAnimationFor(BookAnimState.RIFFLING_PREV);
+    private static final RawAnimation RIFFLE_NEXT_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.RIFFLING_NEXT_SKILLTREE);
+    private static final RawAnimation RIFFLE_PREV_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.RIFFLING_PREV_SKILLTREE);
     private static final RawAnimation IDLE_CLOSED_ANIMATION = rawAnimationFor(BookAnimState.CLOSED);
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
@@ -85,10 +90,15 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
             case CLOSING -> CLOSING_ANIMATION;
             case OPENING -> OPENING_ANIMATION;
             case IDLE_OPEN -> IDLE_OPEN_ANIMATION;
-            case FLIPPING_NEXT -> FLIP_PREV_ANIMATION;
-            case FLIPPING_PREV -> FLIP_NEXT_ANIMATION;
-            case RIFFLING_NEXT -> RIFFLE_PREV_ANIMATION;
-            case RIFFLING_PREV -> RIFFLE_NEXT_ANIMATION;
+            case IDLE_SKILLTREE -> IDLE_SKILLTREE_ANIMATION;
+            case FLIPPING_NEXT -> FLIP_NEXT_ANIMATION;
+            case FLIPPING_PREV -> FLIP_PREV_ANIMATION;
+            case FLIPPING_NEXT_SKILLTREE -> FLIP_NEXT_SKILLTREE_ANIMATION;
+            case FLIPPING_PREV_SKILLTREE -> FLIP_PREV_SKILLTREE_ANIMATION;
+            case RIFFLING_NEXT -> RIFFLE_NEXT_ANIMATION;
+            case RIFFLING_PREV -> RIFFLE_PREV_ANIMATION;
+            case RIFFLING_NEXT_SKILLTREE -> RIFFLE_NEXT_SKILLTREE_ANIMATION;
+            case RIFFLING_PREV_SKILLTREE -> RIFFLE_PREV_SKILLTREE_ANIMATION;
             case CLOSED -> IDLE_CLOSED_ANIMATION;
         };
     }

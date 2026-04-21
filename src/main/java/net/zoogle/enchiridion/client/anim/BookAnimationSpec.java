@@ -28,10 +28,15 @@ public final class BookAnimationSpec {
         clips.put(BookAnimState.CLOSING, new Clip("animation.model.idle_closed", 0.55f, PlaybackMode.LOOP));
         clips.put(BookAnimState.OPENING, new Clip("animation.model.open", 1.5f, PlaybackMode.HOLD_ON_LAST_FRAME));
         clips.put(BookAnimState.IDLE_OPEN, new Clip("animation.model.idle_open", 4.0f, PlaybackMode.LOOP));
+        clips.put(BookAnimState.IDLE_SKILLTREE, new Clip("animation.model.idle_skilltree", 4.0f, PlaybackMode.LOOP));
         clips.put(BookAnimState.FLIPPING_NEXT, new Clip("animation.model.flip_right", 0.5f, PlaybackMode.HOLD_ON_LAST_FRAME));
         clips.put(BookAnimState.FLIPPING_PREV, new Clip("animation.model.flip_left", 0.5f, PlaybackMode.HOLD_ON_LAST_FRAME));
+        clips.put(BookAnimState.FLIPPING_NEXT_SKILLTREE, new Clip("animation.model.flip_right_skilltree", 0.5f, PlaybackMode.HOLD_ON_LAST_FRAME));
+        clips.put(BookAnimState.FLIPPING_PREV_SKILLTREE, new Clip("animation.model.flip_left_skilltree", 0.5f, PlaybackMode.HOLD_ON_LAST_FRAME));
         clips.put(BookAnimState.RIFFLING_NEXT, new Clip("animation.model.riffle_right", 0.7f, PlaybackMode.HOLD_ON_LAST_FRAME));
         clips.put(BookAnimState.RIFFLING_PREV, new Clip("animation.model.riffle_left", 0.7f, PlaybackMode.HOLD_ON_LAST_FRAME));
+        clips.put(BookAnimState.RIFFLING_NEXT_SKILLTREE, new Clip("animation.model.riffle_right_skilltree", 0.7f, PlaybackMode.HOLD_ON_LAST_FRAME));
+        clips.put(BookAnimState.RIFFLING_PREV_SKILLTREE, new Clip("animation.model.riffle_left_skilltree", 0.7f, PlaybackMode.HOLD_ON_LAST_FRAME));
         return clips;
     }
 

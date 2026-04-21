@@ -18,6 +18,14 @@ public record BookTextBlock(Kind kind, Component text) {
         return new BookTextBlock(Kind.SUBTITLE, text);
     }
 
+    public static BookTextBlock level(Component text) {
+        return new BookTextBlock(Kind.LEVEL, text);
+    }
+
+    public static BookTextBlock section(Component text) {
+        return new BookTextBlock(Kind.SECTION, text);
+    }
+
     public static BookTextBlock body(Component text) {
         return new BookTextBlock(Kind.BODY, text);
     }
@@ -25,6 +33,8 @@ public record BookTextBlock(Kind kind, Component text) {
     public enum Kind {
         TITLE,
         SUBTITLE,
+        LEVEL,
+        SECTION,
         BODY
     }
 }

@@ -82,7 +82,6 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
                 return;
             }
 
-            // Culling reduces mirrored back-side readability on thin text planes.
             VertexConsumer magicBuffer = bufferSource.getBuffer(RenderType.entityCutout(magicTexture));
             getRenderer().renderCubesOfBone(poseStack, bone, magicBuffer, packedLight, packedOverlay, 0xFFFFFFFF);
         }

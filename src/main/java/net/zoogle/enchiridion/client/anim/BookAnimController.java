@@ -93,6 +93,20 @@ public final class BookAnimController {
         return true;
     }
 
+    public boolean requestDirectedRiffleToSpread(int targetSpread, int maxSpreadInclusive, boolean forward) {
+        if (state != BookAnimState.IDLE_OPEN) {
+            return false;
+        }
+        int clampedTarget = Math.max(0, Math.min(targetSpread, maxSpreadInclusive));
+        if (clampedTarget == currentSpread) {
+            return false;
+        }
+
+        pendingSpread = clampedTarget;
+        enterFlip(forward ? BookAnimState.RIFFLING_NEXT : BookAnimState.RIFFLING_PREV);
+        return true;
+    }
+
     public boolean requestClose() {
         if (state == BookAnimState.CLOSED || state == BookAnimState.CLOSING) {
             return false;
