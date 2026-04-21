@@ -36,12 +36,12 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
 
     @Override
     public int spreadCount(BookContext context) {
-        return buildDocument(context).spreads().size();
+        return document(context).spreads().size();
     }
 
     @Override
     public BookSpread getSpread(BookContext context, int spreadIndex) {
-        List<BookSpread> spreads = buildDocument(context).spreads();
+        List<BookSpread> spreads = document(context).spreads();
         return spreadIndex >= 0 && spreadIndex < spreads.size()
                 ? spreads.get(spreadIndex)
                 : BookSpread.of(BookPage.empty(), BookPage.empty());
@@ -49,7 +49,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
 
     @Override
     public List<BookInteractiveRegion> interactiveRegions(BookContext context, int spreadIndex) {
-        return buildDocument(context).interactiveRegionsBySpread().getOrDefault(spreadIndex, List.of());
+        return document(context).interactiveRegionsBySpread().getOrDefault(spreadIndex, List.of());
     }
 
     @Override
@@ -89,65 +89,29 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
 
     @Override
     public String nextProjectionFocus(BookContext context, String currentFocusId) {
-        return adjacentProjectionFocus(buildDocument(context).projectionFocusOrder(), currentFocusId, 1);
+        return adjacentProjectionFocus(document(context).projectionFocusOrder(), currentFocusId, 1);
     }
 
     @Override
     public String previousProjectionFocus(BookContext context, String currentFocusId) {
-        return adjacentProjectionFocus(buildDocument(context).projectionFocusOrder(), currentFocusId, -1);
+        return adjacentProjectionFocus(document(context).projectionFocusOrder(), currentFocusId, -1);
     }
 
     @Override
     public int spreadForProjectionFocus(BookContext context, String focusId) {
-        return buildDocument(context).projectionSpreadByFocus().getOrDefault(focusId, -1);
+        return document(context).projectionSpreadByFocus().getOrDefault(focusId, -1);
     }
 
     @Override
     public int pageIndexForProjectionFocus(BookContext context, String focusId) {
-        return buildDocument(context).projectionPageByFocus().getOrDefault(focusId, -1);
+        return document(context).projectionPageByFocus().getOrDefault(focusId, -1);
     }
 
-    private static DocumentLayout buildDocument(BookContext context) {
-        LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
-        List<BookPage> pages = new ArrayList<>();
-        Map<Integer, List<BookInteractiveRegion>> pageRegions = new LinkedHashMap<>();
-
-        List<BookPage> introPages = buildLegacyOpeningPages(context);
-        List<NamedSectionLayout> skillSections = new ArrayList<>();
-        for (JournalSkillEntry skill : snapshot.skills()) {
-            skillSections.add(new NamedSectionLayout(skill.name(), buildSkillPages(skill)));
-        }
-
-        List<BookPage> identityPages = buildIdentityPages(snapshot.characterSheet());
-        int characterPageStart = introPages.size();
-        Map<String, Integer> skillStartPages = new LinkedHashMap<>();
-        int nextPageStart = characterPageStart + identityPages.size() + ledgerPageCount(snapshot.characterSheet().stats());
-        for (NamedSectionLayout skillSection : skillSections) {
-            skillStartPages.put(skillSection.label(), nextPageStart);
-            nextPageStart += skillSection.pages().size();
-        }
-
-        List<BookPage> ledgerPages = buildLedgerPages(snapshot.characterSheet().stats(), skillStartPages);
-
-        pages.addAll(introPages);
-        pages.addAll(identityPages);
-        pages.addAll(ledgerPages);
-        for (NamedSectionLayout skillSection : skillSections) {
-            pages.addAll(skillSection.pages());
-        }
-
-        List<String> projectionFocusOrder = snapshot.skills().stream().map(JournalSkillEntry::name).toList();
-        Map<String, Integer> projectionSpreadByFocus = new LinkedHashMap<>();
-        Map<String, Integer> projectionPageByFocus = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : skillStartPages.entrySet()) {
-            projectionSpreadByFocus.put(entry.getKey(), entry.getValue() / 2);
-            projectionPageByFocus.put(entry.getKey(), entry.getValue());
-        }
-
-        return pairPagesIntoSpreads(pages, pageRegions, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
+    private static LevelRpgJournalDocument document(BookContext context) {
+        return LevelRpgJournalDocumentBuilder.build(context);
     }
 
-    private static List<BookPage> buildLegacyOpeningPages(BookContext context) {
+    static List<BookPage> buildLegacyOpeningPages(BookContext context) {
         String playerName = context != null && context.player() != null
                 ? context.player().getName().getString()
                 : "Unknown";
@@ -160,7 +124,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
         );
     }
 
-    private static List<BookPage> buildIdentityPages(JournalCharacterSheet characterSheet) {
+    static List<BookPage> buildIdentityPages(JournalCharacterSheet characterSheet) {
         List<BookPage> pages = new ArrayList<>();
         pages.addAll(paginateBlocksIntoPages(List.of(
                 BookTextBlock.title(Component.literal(characterSheet.title())),
@@ -169,11 +133,11 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
         return List.copyOf(pages);
     }
 
-    private static int ledgerPageCount(List<JournalCharacterStat> stats) {
+    static int ledgerPageCount(List<JournalCharacterStat> stats) {
         return Math.max(1, (int) Math.ceil(stats.size() / (double) ledgerRowsPerPage()));
     }
 
-    private static List<BookPage> buildLedgerPages(List<JournalCharacterStat> stats, Map<String, Integer> skillStartPages) {
+    static List<BookPage> buildLedgerPages(List<JournalCharacterStat> stats, Map<String, Integer> skillStartPages) {
         int pageCount = ledgerPageCount(stats);
         List<BookPage> pages = new ArrayList<>(pageCount);
         int rowsPerPage = ledgerRowsPerPage();
@@ -203,7 +167,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
         return List.copyOf(pages);
     }
 
-    private static List<BookPage> buildSkillPages(JournalSkillEntry skill) {
+    static List<BookPage> buildSkillPages(JournalSkillEntry skill) {
         String masteryRank = "Mastery " + skill.masteryLevel();
         String masteryBar = formatProgressBar(skill.masteryProgress(), skill.masteryRequiredForNextLevel());
         String masteryText = skill.masteryRequiredForNextLevel() > 0L
@@ -251,57 +215,6 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
                         && LevelRpgJournalInteractionBridge.openSkillProjection(bookContext, skillName)
         ));
-    }
-
-    private static DocumentLayout pairPagesIntoSpreads(
-            List<BookPage> pages,
-            Map<Integer, List<BookInteractiveRegion>> pageRegions,
-            List<String> projectionFocusOrder,
-            Map<String, Integer> projectionSpreadByFocus,
-            Map<String, Integer> projectionPageByFocus
-    ) {
-        List<BookSpread> spreads = new ArrayList<>();
-        Map<Integer, List<BookInteractiveRegion>> spreadRegions = new LinkedHashMap<>();
-
-        for (int pageIndex = 0; pageIndex < pages.size(); pageIndex += 2) {
-            BookPage left = pages.get(pageIndex);
-            BookPage right = pageIndex + 1 < pages.size() ? pages.get(pageIndex + 1) : BookPage.empty();
-            int spreadIndex = spreads.size();
-            spreads.add(BookSpread.of(left, right));
-
-            List<BookInteractiveRegion> regions = new ArrayList<>();
-            List<BookInteractiveRegion> leftRegions = pageRegions.get(pageIndex);
-            if (leftRegions != null) {
-                for (BookInteractiveRegion region : leftRegions) {
-                    regions.add(region.pageSide() == BookPageSide.LEFT
-                            ? region
-                            : BookInteractiveRegion.of(BookPageSide.LEFT, region.x(), region.y(), region.width(), region.height(), region.tooltip(), region.visibleLabel(), region.interactiveText(), region.action()));
-                }
-            }
-            List<BookInteractiveRegion> rightRegions = pageRegions.get(pageIndex + 1);
-            if (rightRegions != null) {
-                for (BookInteractiveRegion region : rightRegions) {
-                    regions.add(region.pageSide() == BookPageSide.RIGHT
-                            ? region
-                            : BookInteractiveRegion.of(BookPageSide.RIGHT, region.x(), region.y(), region.width(), region.height(), region.tooltip(), region.visibleLabel(), region.interactiveText(), region.action()));
-                }
-            }
-            if (!regions.isEmpty()) {
-                spreadRegions.put(spreadIndex, List.copyOf(regions));
-            }
-
-        }
-
-        if (spreads.isEmpty()) {
-            spreads.add(BookSpread.of(BookPage.empty(), BookPage.empty()));
-        }
-        return new DocumentLayout(
-                List.copyOf(spreads),
-                Map.copyOf(spreadRegions),
-                List.copyOf(projectionFocusOrder),
-                Map.copyOf(projectionSpreadByFocus),
-                Map.copyOf(projectionPageByFocus)
-        );
     }
 
     private static String adjacentProjectionFocus(List<String> focusOrder, String currentFocusId, int direction) {
@@ -991,16 +904,6 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
         }
         return builder.toString();
     }
-
-    private record DocumentLayout(
-            List<BookSpread> spreads,
-            Map<Integer, List<BookInteractiveRegion>> interactiveRegionsBySpread,
-            List<String> projectionFocusOrder,
-            Map<String, Integer> projectionSpreadByFocus,
-            Map<String, Integer> projectionPageByFocus
-    ) {}
-
-    private record NamedSectionLayout(String label, List<BookPage> pages) {}
 
     private record LedgerRowLayout(
             String labelText,
