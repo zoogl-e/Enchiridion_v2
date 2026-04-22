@@ -15,6 +15,8 @@ import net.zoogle.enchiridion.client.ui.BookLayout;
 import org.joml.Vector3f;
 import software.bernie.geckolib.renderer.GeoObjectRenderer;
 
+import java.util.List;
+
 /**
  * v2 internal scene renderer backed by GeckoLib.
  * This stays inside Enchiridion; external books still provide content only.
@@ -39,8 +41,6 @@ public final class BookSceneRenderer {
     private static final float MAX_TILT_PITCH_DEGREES = 5.0f;
     private static final float MAX_INSPECT_PITCH_DEGREES = 28.0f;
     private static final float CLOSED_PRESENTATION_YAW = 0f;
-    private static final float TILT_SMOOTHING = 0.14f;
-    private static final float HOVER_SMOOTHING = 0.2f;
     private static final float PAGE_PICK_CAMERA_DEPTH = 1600.0f;
     private static final float MODEL_UNIT = 1.0f / 16.0f;
     private static final float BOOK_PIVOT_X = 0.0f;
@@ -81,16 +81,18 @@ public final class BookSceneRenderer {
     ) {
         float closedness = closednessFor(state, animationProgress);
         float targetClosedHoverScale = closedHovered && closedness >= 0.999f ? CLOSED_HOVER_SCALE : 1.0f;
-        currentClosedHoverScale = approach(currentClosedHoverScale, targetClosedHoverScale, HOVER_SMOOTHING);
+        currentClosedHoverScale = approach(currentClosedHoverScale, targetClosedHoverScale, BookAnimationSpec.hoverSmoothing());
 
         float normalizedMouseX = normalizeMouseOffset(mouseX, layout.bookX(), layout.bookWidth());
         float normalizedMouseY = normalizeMouseOffset(mouseY, layout.bookY(), layout.bookHeight());
         float targetTiltYaw = normalizedMouseX * MAX_TILT_YAW_DEGREES;
         float targetTiltPitch = -normalizedMouseY * MAX_TILT_PITCH_DEGREES;
-        currentTiltYaw = approach(currentTiltYaw, targetTiltYaw, TILT_SMOOTHING);
-        currentTiltPitch = approach(currentTiltPitch, targetTiltPitch, TILT_SMOOTHING);
-        currentInspectYaw = inspectYaw * closedness;
-        currentInspectPitch = clamp(inspectPitch, -MAX_INSPECT_PITCH_DEGREES, MAX_INSPECT_PITCH_DEGREES) * closedness;
+        currentTiltYaw = approach(currentTiltYaw, targetTiltYaw, BookAnimationSpec.tiltSmoothing());
+        currentTiltPitch = approach(currentTiltPitch, targetTiltPitch, BookAnimationSpec.tiltSmoothing());
+        float targetInspectYaw = inspectYaw * closedness;
+        float targetInspectPitch = clamp(inspectPitch, -MAX_INSPECT_PITCH_DEGREES, MAX_INSPECT_PITCH_DEGREES) * closedness;
+        currentInspectYaw = approach(currentInspectYaw, targetInspectYaw, BookAnimationSpec.inspectSmoothing());
+        currentInspectPitch = approach(currentInspectPitch, targetInspectPitch, BookAnimationSpec.inspectSmoothing());
     }
 
     public PageLocalPoint pageLocalPoint(
@@ -269,6 +271,20 @@ public final class BookSceneRenderer {
 
         poseStack.popPose();
         graphics.flush();
+    }
+
+    public void prewarmPageTextures(BookSpread spread, int spreadIndex) {
+        pageTexturePipeline.textureSetFor(
+                spread,
+                spreadIndex,
+                0.0f,
+                0.0f,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null
+        );
     }
 
     public boolean isClosedBookHovered(BookLayout layout, int mouseX, int mouseY) {

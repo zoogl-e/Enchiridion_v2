@@ -111,7 +111,7 @@ final class BookPageTexturePipeline {
         int interactiveStateKey = 31 * interactiveNodeListKey(leftInteractiveNodes) + interactiveNodeListKey(rightInteractiveNodes);
         interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(leftHoveredInteractiveNode);
         interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(rightHoveredInteractiveNode);
-        long animationBucket = currentAnimationBucket();
+        long animationBucket = currentAnimationBucket(textAlphaKey, glitchStrengthKey);
         if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha || animationBucket != lastAnimationBucket || glitchStrengthKey != lastGlitchStrength || focusedPageSideKey != lastFocusedPageSide || interactiveStateKey != lastInteractiveStateKey) {
             updateMagicPlaneTextures(
                     spread,
@@ -285,7 +285,10 @@ final class BookPageTexturePipeline {
         return Math.round((uv / UV_SPACE_SIZE) * height);
     }
 
-    private static long currentAnimationBucket() {
+    private static long currentAnimationBucket(int textAlphaKey, int glitchStrengthKey) {
+        if (textAlphaKey <= 0 && glitchStrengthKey <= 0) {
+            return 0L;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
             return 0L;

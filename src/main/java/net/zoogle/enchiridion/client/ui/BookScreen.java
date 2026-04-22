@@ -42,6 +42,7 @@ public final class BookScreen extends Screen {
         if (viewState.displayedSpread() == null || viewState.displayedSpreadIndex() != controller.spreadIndex()) {
             viewState.syncDisplayedSpreadFromController(controller);
         }
+        sceneRenderer.prewarmPageTextures(viewState.displayedSpread(), viewState.displayedSpreadIndex());
     }
 
     @Override
