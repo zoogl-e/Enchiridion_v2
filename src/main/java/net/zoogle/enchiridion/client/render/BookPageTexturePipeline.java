@@ -21,6 +21,9 @@ import java.awt.image.DataBufferInt;
 
 final class BookPageTexturePipeline {
     private static final int DYNAMIC_TEXTURE_SIZE = 512;
+    private static final int TEXT_ALPHA_REFRESH_STEPS = 12;
+    private static final int GLITCH_REFRESH_STEPS = 10;
+    private static final long ANIMATED_TEXT_BUCKET_TICKS = 8L;
     private static final ResourceLocation BASE_TEXTURE = ResourceLocation.fromNamespaceAndPath(Enchiridion.MODID, "textures/gui/enchiridion.png");
     private static final String LEFT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_left";
     private static final String RIGHT_TEXTURE_PREFIX = Enchiridion.MODID + "_magic_text_right";
@@ -105,8 +108,8 @@ final class BookPageTexturePipeline {
             PageInteractiveNode leftHoveredInteractiveNode,
             PageInteractiveNode rightHoveredInteractiveNode
     ) {
-        int textAlphaKey = Math.clamp(Math.round(Math.clamp(textAlpha, 0.0f, 1.0f) * 255.0f), 0, 255);
-        int glitchStrengthKey = Math.clamp(Math.round(Math.clamp(glitchStrength, 0.0f, 1.0f) * 255.0f), 0, 255);
+        int textAlphaKey = quantizedVisualKey(textAlpha, TEXT_ALPHA_REFRESH_STEPS);
+        int glitchStrengthKey = quantizedVisualKey(glitchStrength, GLITCH_REFRESH_STEPS);
         int focusedPageSideKey = focusedPageSide == null ? -1 : focusedPageSide.ordinal();
         int interactiveStateKey = 31 * interactiveNodeListKey(leftInteractiveNodes) + interactiveNodeListKey(rightInteractiveNodes);
         interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(leftHoveredInteractiveNode);
@@ -293,7 +296,18 @@ final class BookPageTexturePipeline {
         if (minecraft.level == null) {
             return 0L;
         }
-        return minecraft.level.getGameTime() / 3L;
+        return minecraft.level.getGameTime() / ANIMATED_TEXT_BUCKET_TICKS;
+    }
+
+    private static int quantizedVisualKey(float value, int steps) {
+        float clamped = Math.clamp(value, 0.0f, 1.0f);
+        if (clamped <= 0.0f) {
+            return 0;
+        }
+        if (clamped >= 1.0f) {
+            return steps;
+        }
+        return Math.clamp(Math.round(clamped * steps), 0, steps);
     }
 
     private static int interactiveNodeKey(PageInteractiveNode node) {

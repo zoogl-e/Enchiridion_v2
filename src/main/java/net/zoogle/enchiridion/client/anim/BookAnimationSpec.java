@@ -6,7 +6,7 @@ import java.util.Map;
 public final class BookAnimationSpec {
     private static final float ARRIVAL_DURATION_SECONDS = 0.58f;
     private static final float OPEN_DURATION_SECONDS = 1.35f;
-    private static final float CLOSE_DURATION_SECONDS = 1.08f;
+    private static final float CLOSE_DURATION_SECONDS = 1.0f;
     private static final float FLIP_DURATION_SECONDS = 0.56f;
     private static final float RIFFLE_DURATION_SECONDS = 0.76f;
     private static final float IDLE_LOOP_DURATION_SECONDS = 4.0f;
@@ -63,7 +63,7 @@ public final class BookAnimationSpec {
         EnumMap<BookAnimState, Clip> clips = new EnumMap<>(BookAnimState.class);
         clips.put(BookAnimState.ARRIVING, new Clip("animation.model.slam", ARRIVAL_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.CLOSED, new Clip("animation.model.idle_closed", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
-        clips.put(BookAnimState.CLOSING, new Clip("animation.model.idle_closed", CLOSE_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, false));
+        clips.put(BookAnimState.CLOSING, new Clip("animation.model.close", CLOSE_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.OPENING, new Clip("animation.model.open", OPEN_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.IDLE_OPEN, new Clip("animation.model.idle_open", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
         clips.put(BookAnimState.IDLE_SKILLTREE, new Clip("animation.model.idle_skilltree", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
