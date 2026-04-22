@@ -7,6 +7,7 @@ import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
+import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -86,6 +87,7 @@ final class BookInteractionResolver {
         List<PageInteractiveNode> resolved = new ArrayList<>();
         for (BookPageElement.InteractiveElement interactiveElement : pageInteractiveElements(displayedSpread)) {
             BookPageSide pageSide = pageSideFor(displayedSpread, interactiveElement);
+            LocalInteractionBounds bounds = localBoundsFor(interactiveElement);
             resolved.add(buildNode(
                     controller,
                     sceneRenderer,
@@ -93,10 +95,10 @@ final class BookInteractionResolver {
                     projectionFocusOffset,
                     interactiveElement.stableId(),
                     pageSide,
-                    interactiveElement.x(),
-                    interactiveElement.y(),
-                    interactiveElement.width(),
-                    interactiveElement.height(),
+                    bounds.x(),
+                    bounds.y(),
+                    bounds.width(),
+                    bounds.height(),
                     labelFor(interactiveElement),
                     interactiveElement.tooltip(),
                     interactiveElement.action(),
@@ -370,4 +372,17 @@ final class BookInteractionResolver {
     private static String targetId(String prefix, BookPageSide side, int x, int y, int width, int height, String label) {
         return prefix + ":" + side + ":" + x + ":" + y + ":" + width + ":" + height + ":" + label;
     }
+
+    private static LocalInteractionBounds localBoundsFor(BookPageElement.InteractiveElement interactiveElement) {
+        return switch (interactiveElement) {
+            case BookPageElement.InteractiveTextElement text -> {
+                PageCanvasRenderer.RenderedTextGeometry geometry = PageCanvasRenderer.inlineInteractionGeometryFor(text);
+                yield new LocalInteractionBounds(geometry.drawX(), geometry.drawY(), geometry.width(), geometry.height());
+            }
+            case BookPageElement.ButtonElement button ->
+                    new LocalInteractionBounds(button.x(), button.y(), button.width(), button.height());
+        };
+    }
+
+    private record LocalInteractionBounds(int x, int y, int width, int height) {}
 }

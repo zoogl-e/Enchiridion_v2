@@ -8,6 +8,7 @@ import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookSpread;
+import net.zoogle.enchiridion.client.anim.BookAnimationSpec;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.ui.BookLayout;
@@ -286,11 +287,12 @@ public final class BookSceneRenderer {
     }
 
     private static float closednessFor(BookAnimState state, float animationProgress) {
+        float easedProgress = BookAnimationSpec.presentationProgress(state, animationProgress);
         return switch (state) {
             case ARRIVING -> 1.0f;
             case CLOSED -> 1.0f;
-            case OPENING -> 1.0f - animationProgress;
-            case CLOSING -> animationProgress;
+            case OPENING -> 1.0f - easedProgress;
+            case CLOSING -> easedProgress;
             default -> 0.0f;
         };
     }

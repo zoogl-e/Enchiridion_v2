@@ -519,7 +519,7 @@ public final class JournalPageStyleSystem {
         ) {
             SlotRegion bounds = switch (element) {
                 case BookPageElement.TextElement text -> toSlotRegion(PageCanvasRenderer.geometryForTextElement(text));
-                case BookPageElement.InteractiveTextElement text -> toSlotRegion(PageCanvasRenderer.geometryForInteractiveTextElement(text));
+                case BookPageElement.InteractiveTextElement text -> toSlotRegion(PageCanvasRenderer.inlineInteractionGeometryFor(text));
                 case BookPageElement.DecorationElement decoration -> toSlotRegion(PageCanvasRenderer.geometryForDecorationElement(decoration));
                 case BookPageElement.ButtonElement button -> new SlotRegion(button.x(), button.y(), button.width(), button.height());
                 default -> new SlotRegion(element.x(), element.y(), element.width(), element.height());

@@ -400,8 +400,14 @@ public final class PageCanvasRenderer {
             }
         }
         if (BookDebugSettings.interactiveTextBoundsDebug()) {
+            RenderedTextGeometry interactionGeometry = inlineInteractionGeometryFor(element);
             graphics.setColor(new Color(hovered ? 0xCCAA33FF : 0xAA33CC66, true));
-            graphics.drawRect(element.x(), element.y(), Math.max(1, element.width() - 1), Math.max(1, element.height() - 1));
+            graphics.drawRect(
+                    interactionGeometry.drawX(),
+                    interactionGeometry.drawY(),
+                    Math.max(1, interactionGeometry.width() - 1),
+                    Math.max(1, interactionGeometry.height() - 1)
+            );
         }
     }
 
@@ -728,6 +734,21 @@ public final class PageCanvasRenderer {
 
     public static RenderedTextGeometry geometryForInteractiveTextElement(BookPageElement.InteractiveTextElement element) {
         return geometryForInteractiveTextElement(element, Minecraft.getInstance().font.lineHeight);
+    }
+
+    public static RenderedTextGeometry inlineInteractionGeometryFor(BookPageElement.InteractiveTextElement element) {
+        RenderedTextGeometry rendered = geometryForInteractiveTextElement(element);
+        int topInset = rendered.height() > 5 ? 1 : 0;
+        int bottomInset = rendered.height() > 6 ? 2 : Math.min(1, Math.max(0, rendered.height() - 1));
+        int adjustedY = rendered.drawY() + topInset;
+        int adjustedHeight = Math.max(1, rendered.height() - topInset - bottomInset);
+        return new RenderedTextGeometry(
+                rendered.drawX(),
+                adjustedY,
+                rendered.width(),
+                adjustedHeight,
+                adjustedY + (rendered.baselineY() - rendered.drawY())
+        );
     }
 
     public static RenderedTextGeometry geometryForInteractiveTextElement(BookPageElement.InteractiveTextElement element, int fontAscent) {

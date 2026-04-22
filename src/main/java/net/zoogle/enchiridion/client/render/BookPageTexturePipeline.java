@@ -4,21 +4,20 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FastColor;
 import net.zoogle.enchiridion.Enchiridion;
 import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 
-import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
+import java.awt.image.DataBuffer;
+import java.awt.image.DataBufferInt;
 
 final class BookPageTexturePipeline {
     private static final int DYNAMIC_TEXTURE_SIZE = 512;
@@ -235,17 +234,22 @@ final class BookPageTexturePipeline {
     }
 
     private void uploadBufferedImage(DynamicTexture targetTexture, BufferedImage image) {
-        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            ImageIO.write(image, "png", out);
-            out.flush();
-            try (ByteArrayInputStream in = new ByteArrayInputStream(out.toByteArray())) {
-                NativeImage pixels = NativeImage.read(in);
-                targetTexture.setPixels(pixels);
-                targetTexture.upload();
-            }
-        } catch (IOException exception) {
-            throw new RuntimeException("Failed to upload dynamic magical text texture", exception);
+        NativeImage pixels = targetTexture.getPixels();
+        if (pixels == null || pixels.getWidth() != image.getWidth() || pixels.getHeight() != image.getHeight()) {
+            pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
+            targetTexture.setPixels(pixels);
         }
+
+        int[] argbPixels = argbPixels(image);
+        int width = image.getWidth();
+        int height = image.getHeight();
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width;
+            for (int x = 0; x < width; x++) {
+                pixels.setPixelRGBA(x, y, argbToAbgr(argbPixels[rowOffset + x]));
+            }
+        }
+        targetTexture.upload();
     }
 
     private static BufferedImage copyImage(BufferedImage source) {
@@ -254,6 +258,23 @@ final class BookPageTexturePipeline {
         graphics.drawImage(source, 0, 0, null);
         graphics.dispose();
         return copy;
+    }
+
+    private static int[] argbPixels(BufferedImage image) {
+        DataBuffer buffer = image.getRaster().getDataBuffer();
+        if (buffer instanceof DataBufferInt dataBufferInt) {
+            return dataBufferInt.getData();
+        }
+        return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+    }
+
+    private static int argbToAbgr(int argb) {
+        return FastColor.ABGR32.color(
+                FastColor.ARGB32.alpha(argb),
+                FastColor.ARGB32.blue(argb),
+                FastColor.ARGB32.green(argb),
+                FastColor.ARGB32.red(argb)
+        );
     }
 
     private static int uvToPixelX(float uv, int width) {
