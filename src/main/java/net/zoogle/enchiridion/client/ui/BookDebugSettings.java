@@ -4,9 +4,10 @@ import net.zoogle.enchiridion.client.levelrpg.JournalPageStyleSystem;
 
 public final class BookDebugSettings {
     private static boolean showGuiTextDebug = false;
-    private static boolean pageLocalInteractionDebug = false;
-    private static boolean hoveredInteractiveBoundsDebug = false;
-    private static boolean interactiveTextBoundsDebug = false;
+    private static boolean templateRegionsDebug = false;
+    private static boolean measuredTextBoundsDebug = false;
+    private static boolean interactionBoundsDebug = false;
+    private static boolean debugLabels = false;
 
     private BookDebugSettings() {}
 
@@ -15,34 +16,69 @@ public final class BookDebugSettings {
     }
 
     public static boolean pageLocalInteractionDebug() {
-        return pageLocalInteractionDebug;
+        return interactionBoundsDebug;
     }
 
     public static boolean hoveredInteractiveBoundsDebug() {
-        return hoveredInteractiveBoundsDebug;
+        return interactionBoundsDebug;
     }
 
     public static boolean interactiveTextBoundsDebug() {
-        return interactiveTextBoundsDebug;
+        return interactionBoundsDebug;
+    }
+
+    public static boolean templateRegionsDebug() {
+        return templateRegionsDebug;
+    }
+
+    public static boolean measuredTextBoundsDebug() {
+        return measuredTextBoundsDebug;
+    }
+
+    public static boolean interactionBoundsDebug() {
+        return interactionBoundsDebug;
+    }
+
+    public static boolean debugLabels() {
+        return debugLabels;
     }
 
     public static boolean templateLayoutDebug() {
-        return JournalPageStyleSystem.debugTemplateLayoutEnabled();
+        return templateRegionsDebug || measuredTextBoundsDebug;
     }
 
     public static boolean anyDebugEnabled() {
         return showGuiTextDebug
-                || pageLocalInteractionDebug
-                || hoveredInteractiveBoundsDebug
-                || interactiveTextBoundsDebug
-                || templateLayoutDebug();
+                || templateRegionsDebug
+                || measuredTextBoundsDebug
+                || interactionBoundsDebug
+                || debugLabels;
     }
 
     public static void setAllDebugEnabled(boolean enabled) {
         showGuiTextDebug = enabled;
-        pageLocalInteractionDebug = enabled;
-        hoveredInteractiveBoundsDebug = enabled;
-        interactiveTextBoundsDebug = enabled;
-        JournalPageStyleSystem.setDebugTemplateLayoutEnabled(enabled);
+        templateRegionsDebug = enabled;
+        measuredTextBoundsDebug = enabled;
+        interactionBoundsDebug = enabled;
+        debugLabels = enabled;
+        JournalPageStyleSystem.setDebugTemplateLayoutEnabled(templateLayoutDebug());
+    }
+
+    public static void setTemplateRegionsDebug(boolean enabled) {
+        templateRegionsDebug = enabled;
+        JournalPageStyleSystem.setDebugTemplateLayoutEnabled(templateLayoutDebug());
+    }
+
+    public static void setMeasuredTextBoundsDebug(boolean enabled) {
+        measuredTextBoundsDebug = enabled;
+        JournalPageStyleSystem.setDebugTemplateLayoutEnabled(templateLayoutDebug());
+    }
+
+    public static void setInteractionBoundsDebug(boolean enabled) {
+        interactionBoundsDebug = enabled;
+    }
+
+    public static void setDebugLabels(boolean enabled) {
+        debugLabels = enabled;
     }
 }

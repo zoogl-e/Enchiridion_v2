@@ -154,12 +154,12 @@ public final class LevelRpgJournalTemplateEditor {
         if (!enabled || viewState.layout() == null) {
             return;
         }
-        if (templateMode && debugVisible) {
+        if (templateMode && BookDebugSettings.templateRegionsDebug()) {
             drawForSide(graphics, font, controller, viewState, sceneRenderer, BookPageSide.LEFT);
             drawForSide(graphics, font, controller, viewState, sceneRenderer, BookPageSide.RIGHT);
         }
         drawControlStrip(graphics, font, screenHeight);
-        if (selection != null && debugVisible) {
+        if (selection != null && BookDebugSettings.debugLabels()) {
             JournalPageStyleSystem.TemplateSpec template = JournalPageStyleSystem.currentTemplate(selection.purpose(), selection.pageSide());
             JournalPageStyleSystem.SlotRegion region = template.slot(selection.slot()).region();
             graphics.drawString(font, selection.purpose() + " / " + selection.slot() + " [" + selection.pageSide() + "]", 8, screenHeight - 52, 0xFFE8F7FF, false);
@@ -340,6 +340,30 @@ public final class LevelRpgJournalTemplateEditor {
                 onChanged.run();
                 return true;
             }
+            case DEBUG_TEMPLATE -> {
+                BookDebugSettings.setTemplateRegionsDebug(!BookDebugSettings.templateRegionsDebug());
+                debugVisible = BookDebugSettings.anyDebugEnabled();
+                onChanged.run();
+                return true;
+            }
+            case DEBUG_MEASURED -> {
+                BookDebugSettings.setMeasuredTextBoundsDebug(!BookDebugSettings.measuredTextBoundsDebug());
+                debugVisible = BookDebugSettings.anyDebugEnabled();
+                onChanged.run();
+                return true;
+            }
+            case DEBUG_INTERACTION -> {
+                BookDebugSettings.setInteractionBoundsDebug(!BookDebugSettings.interactionBoundsDebug());
+                debugVisible = BookDebugSettings.anyDebugEnabled();
+                onChanged.run();
+                return true;
+            }
+            case DEBUG_LABELS -> {
+                BookDebugSettings.setDebugLabels(!BookDebugSettings.debugLabels());
+                debugVisible = BookDebugSettings.anyDebugEnabled();
+                onChanged.run();
+                return true;
+            }
         }
         return false;
     }
@@ -382,6 +406,9 @@ public final class LevelRpgJournalTemplateEditor {
             if (button == ControlButton.DISCARD && !templateDirty) {
                 continue;
             }
+            if (isDebugSubToggle(button) && !debugVisible) {
+                continue;
+            }
             String label = buttonLabel(button);
             int width = Math.max(46, font.width(label) + (CONTROL_PADDING_X * 2));
             int fill = buttonFill(button);
@@ -403,6 +430,9 @@ public final class LevelRpgJournalTemplateEditor {
             if (button == ControlButton.DISCARD && !templateDirty) {
                 continue;
             }
+            if (isDebugSubToggle(button) && !debugVisible) {
+                continue;
+            }
             String label = buttonLabel(button);
             int width = Math.max(46, font.width(label) + (CONTROL_PADDING_X * 2));
             if (mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + CONTROL_HEIGHT) {
@@ -419,6 +449,10 @@ public final class LevelRpgJournalTemplateEditor {
             case SAVE -> "Save";
             case DISCARD -> "Discard Changes";
             case DEBUG_UI -> debugVisible ? "Debug UI: ON" : "Debug UI";
+            case DEBUG_TEMPLATE -> BookDebugSettings.templateRegionsDebug() ? "Slots: ON" : "Slots";
+            case DEBUG_MEASURED -> BookDebugSettings.measuredTextBoundsDebug() ? "Text Bounds: ON" : "Text Bounds";
+            case DEBUG_INTERACTION -> BookDebugSettings.interactionBoundsDebug() ? "Interaction: ON" : "Interaction";
+            case DEBUG_LABELS -> BookDebugSettings.debugLabels() ? "Labels: ON" : "Labels";
         };
     }
 
@@ -431,6 +465,10 @@ public final class LevelRpgJournalTemplateEditor {
             case SAVE -> 0x905A4020;
             case DISCARD -> 0x90523030;
             case DEBUG_UI -> debugVisible ? 0x90442858 : 0x90303038;
+            case DEBUG_TEMPLATE -> BookDebugSettings.templateRegionsDebug() ? 0x9030556F : 0x90303038;
+            case DEBUG_MEASURED -> BookDebugSettings.measuredTextBoundsDebug() ? 0x905A3030 : 0x90303038;
+            case DEBUG_INTERACTION -> BookDebugSettings.interactionBoundsDebug() ? 0x90404D6A : 0x90303038;
+            case DEBUG_LABELS -> BookDebugSettings.debugLabels() ? 0x90604B2C : 0x90303038;
         };
     }
 
@@ -443,6 +481,10 @@ public final class LevelRpgJournalTemplateEditor {
             case SAVE -> 0xFFD7C08C;
             case DISCARD -> 0xFFD98C8C;
             case DEBUG_UI -> 0xFFB38CFF;
+            case DEBUG_TEMPLATE -> 0xFF8FD8FF;
+            case DEBUG_MEASURED -> 0xFFFF8F8F;
+            case DEBUG_INTERACTION -> 0xFF8FE3C9;
+            case DEBUG_LABELS -> 0xFFFFD27A;
         };
     }
 
@@ -451,6 +493,13 @@ public final class LevelRpgJournalTemplateEditor {
             return 0xFF9E9387;
         }
         return 0xFFF5E9D6;
+    }
+
+    private static boolean isDebugSubToggle(ControlButton button) {
+        return button == ControlButton.DEBUG_TEMPLATE
+                || button == ControlButton.DEBUG_MEASURED
+                || button == ControlButton.DEBUG_INTERACTION
+                || button == ControlButton.DEBUG_LABELS;
     }
 
     private static List<String> textLinesInRegion(BookPage page, JournalPageStyleSystem.SlotRegion region) {
@@ -690,6 +739,10 @@ public final class LevelRpgJournalTemplateEditor {
         TEMPLATE_MODE,
         SAVE,
         DISCARD,
-        DEBUG_UI
+        DEBUG_UI,
+        DEBUG_TEMPLATE,
+        DEBUG_MEASURED,
+        DEBUG_INTERACTION,
+        DEBUG_LABELS
     }
 }

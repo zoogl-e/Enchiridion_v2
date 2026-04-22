@@ -7,6 +7,8 @@ import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookRegionAction;
 import net.zoogle.enchiridion.api.BookTextBlock;
+import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
+import net.zoogle.enchiridion.client.ui.BookDebugSettings;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -179,8 +181,9 @@ public final class JournalPageStyleSystem {
                 return;
             }
             FittedLine line = fitSingleLine(text, role, definition);
-            elements.add(JournalElementFactory.centeredRoleTextElement(role, line.text(), line.x(), definition.region().y(), line.width(), line.height(), line.scale()));
-            measuredBounds.add(new PlacedBounds(slot, new SlotRegion(line.x(), definition.region().y(), line.width(), line.height()), definition.region(), role, false, line.scale()));
+            BookPageElement.TextElement element = JournalElementFactory.centeredRoleTextElement(role, line.text(), line.x(), definition.region().y(), line.width(), line.height(), line.scale());
+            elements.add(element);
+            trackMeasuredBounds(slot, definition.region(), role, false, element, line.scale());
         }
 
         private void addCenteredWrappedText(JournalPageSlot slot, JournalTextRole role, String text, SlotDefinition definition) {
@@ -188,10 +191,9 @@ public final class JournalPageStyleSystem {
             int cursorY = definition.region().y();
             int lineHeight = JournalLayoutMetrics.lineHeightFor(kindFor(role));
             for (String line : lines) {
-                int textWidth = Math.max(1, Minecraft.getInstance().font.width(line));
-                int drawX = centeredX(definition.region(), textWidth);
-                elements.add(JournalElementFactory.centeredRoleTextElement(role, line, definition.region().x(), cursorY, definition.region().width()));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(drawX, cursorY, textWidth, lineHeight), definition.region(), role, false, 1.0f));
+                BookPageElement.TextElement element = JournalElementFactory.centeredRoleTextElement(role, line, definition.region().x(), cursorY, definition.region().width());
+                elements.add(element);
+                trackMeasuredBounds(slot, definition.region(), role, false, element, 1.0f);
                 cursorY += lineHeight;
             }
             if (cursorY > definition.region().bottom()) {
@@ -205,10 +207,9 @@ public final class JournalPageStyleSystem {
             int cursorY = definition.region().y();
             int lineHeight = JournalLayoutMetrics.lineHeightFor(kindFor(JournalTextRole.BODY));
             for (String line : lines) {
-                int textWidth = Math.max(1, Minecraft.getInstance().font.width(line));
-                int drawX = centeredX(definition.region(), textWidth);
-                elements.add(JournalElementFactory.centeredRoleTextElement(JournalTextRole.BODY, line, definition.region().x(), cursorY, definition.region().width()));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(drawX, cursorY, textWidth, lineHeight), definition.region(), JournalTextRole.BODY, false, 1.0f));
+                BookPageElement.TextElement element = JournalElementFactory.centeredRoleTextElement(JournalTextRole.BODY, line, definition.region().x(), cursorY, definition.region().width());
+                elements.add(element);
+                trackMeasuredBounds(slot, definition.region(), JournalTextRole.BODY, false, element, 1.0f);
                 cursorY += lineHeight;
             }
             if (cursorY > definition.region().bottom()) {
@@ -227,7 +228,7 @@ public final class JournalPageStyleSystem {
                     case CENTER -> centeredX(definition.region(), textWidth);
                     case LEFT -> definition.region().x();
                 };
-                elements.add(new BookPageElement.TextElement(
+                BookPageElement.TextElement element = new BookPageElement.TextElement(
                         kindFor(JournalTextRole.BODY),
                         Component.literal(row),
                         drawX,
@@ -235,8 +236,9 @@ public final class JournalPageStyleSystem {
                         textWidth,
                         lineHeight,
                         1.0f
-                ));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(drawX, cursorY, textWidth, lineHeight), definition.region(), JournalTextRole.BODY, false, 1.0f));
+                );
+                elements.add(element);
+                trackMeasuredBounds(slot, definition.region(), JournalTextRole.BODY, false, element, 1.0f);
                 cursorY += lineHeight + Math.max(0, gap);
             }
             if (!clamped.isEmpty()) {
@@ -263,12 +265,15 @@ public final class JournalPageStyleSystem {
                     break;
                 }
                 JournalElementFactory.LedgerRowLayout layout = JournalElementFactory.ledgerRowLayout(template.pageSide(), row, cursorY, targetPageIndex);
-                elements.add(JournalElementFactory.ledgerLabel(layout));
-                elements.add(JournalElementFactory.decorationElement(BookTextBlock.Kind.BODY, layout.dotsText(), layout.dotsX(), layout.labelY()));
-                elements.add(JournalElementFactory.decorationElement(BookTextBlock.Kind.BODY, layout.valueText(), layout.valueX(), layout.labelY()));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(layout.labelX(), layout.labelY(), layout.labelWidth(), layout.labelHeight()), definition.region(), JournalTextRole.INTERACTION, true, 1.0f));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(layout.dotsX(), layout.labelY(), Math.max(1, Minecraft.getInstance().font.width(layout.dotsText())), JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY)), definition.region(), JournalTextRole.BODY, false, 1.0f));
-                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(layout.valueX(), layout.labelY(), Math.max(1, Minecraft.getInstance().font.width(layout.valueText())), JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY)), definition.region(), JournalTextRole.BODY, false, 1.0f));
+                BookPageElement.InteractiveTextElement label = JournalElementFactory.ledgerLabel(layout);
+                BookPageElement.DecorationElement dots = JournalElementFactory.decorationElement(BookTextBlock.Kind.BODY, layout.dotsText(), layout.dotsX(), layout.labelY());
+                BookPageElement.DecorationElement value = JournalElementFactory.decorationElement(BookTextBlock.Kind.BODY, layout.valueText(), layout.valueX(), layout.labelY());
+                elements.add(label);
+                elements.add(dots);
+                elements.add(value);
+                trackMeasuredBounds(slot, definition.region(), JournalTextRole.INTERACTION, false, label, label.scale());
+                trackMeasuredBounds(slot, definition.region(), JournalTextRole.BODY, false, dots, 1.0f);
+                trackMeasuredBounds(slot, definition.region(), JournalTextRole.BODY, false, value, 1.0f);
                 cursorY += layout.rowHeight();
                 placed++;
             }
@@ -282,7 +287,7 @@ public final class JournalPageStyleSystem {
             }
             visibleInteractionCount++;
             FittedLine line = fitSingleLine(text, JournalTextRole.INTERACTION, definition);
-            elements.add(JournalElementFactory.toInteractiveTextElement(
+            BookPageElement.InteractiveTextElement element = JournalElementFactory.toInteractiveTextElement(
                     JournalElementFactory.centeredRoleInteractiveTextLayout(
                             stableId,
                             JournalTextRole.INTERACTION,
@@ -295,8 +300,9 @@ public final class JournalPageStyleSystem {
                             tooltip,
                             action
                     )
-            ));
-            measuredBounds.add(new PlacedBounds(JournalPageSlot.INTERACTION, new SlotRegion(line.x(), definition.region().y(), line.width(), line.height()), definition.region(), JournalTextRole.INTERACTION, true, line.scale()));
+            );
+            elements.add(element);
+            trackMeasuredBounds(JournalPageSlot.INTERACTION, definition.region(), JournalTextRole.INTERACTION, false, element, line.scale());
         }
 
         BookPage build() {
@@ -363,30 +369,31 @@ public final class JournalPageStyleSystem {
         }
 
         private void appendDebugRegions() {
-            for (Map.Entry<JournalPageSlot, SlotDefinition> entry : template.slots().entrySet()) {
-                SlotRegion region = entry.getValue().region();
-                elements.add(new BookPageElement.BoxElement(region.x(), region.y(), region.width(), region.height(), DEBUG_SLOT_FILL, DEBUG_SLOT_BORDER, BookPageElement.PanelVisualStyle.PANEL));
+            if (BookDebugSettings.templateRegionsDebug()) {
+                for (Map.Entry<JournalPageSlot, SlotDefinition> entry : template.slots().entrySet()) {
+                    SlotRegion region = entry.getValue().region();
+                    elements.add(new BookPageElement.BoxElement(region.x(), region.y(), region.width(), region.height(), DEBUG_SLOT_FILL, DEBUG_SLOT_BORDER, BookPageElement.PanelVisualStyle.PANEL));
+                }
             }
-            for (PlacedBounds bounds : measuredBounds) {
-                int border = bounds.interactive()
-                        ? DEBUG_INTERACTION_MEASURED_BORDER
-                        : DEBUG_MEASURED_BORDER;
-                elements.add(new BookPageElement.BoxElement(
-                        bounds.bounds().x(),
-                        bounds.bounds().y(),
-                        bounds.bounds().width(),
-                        bounds.bounds().height(),
-                        DEBUG_MEASURED_FILL,
-                        border,
-                        BookPageElement.PanelVisualStyle.EMPHASIS
-                ));
-                if (bounds.scale() < 0.999f) {
-                    elements.add(JournalElementFactory.decorationElement(
-                            BookTextBlock.Kind.BODY,
-                            String.format("x%.2f", bounds.scale()),
+            if (BookDebugSettings.measuredTextBoundsDebug()) {
+                for (PlacedBounds bounds : measuredBounds) {
+                    elements.add(new BookPageElement.BoxElement(
                             bounds.bounds().x(),
-                            Math.max(0, bounds.bounds().y() - JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY))
+                            bounds.bounds().y(),
+                            bounds.bounds().width(),
+                            bounds.bounds().height(),
+                            DEBUG_MEASURED_FILL,
+                            DEBUG_MEASURED_BORDER,
+                            BookPageElement.PanelVisualStyle.EMPHASIS
                     ));
+                    if (bounds.scale() < 0.999f && BookDebugSettings.debugLabels()) {
+                        elements.add(JournalElementFactory.decorationElement(
+                                BookTextBlock.Kind.BODY,
+                                String.format("x%.2f", bounds.scale()),
+                                bounds.bounds().x(),
+                                Math.max(0, bounds.bounds().y() - JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY))
+                        ));
+                    }
                 }
             }
             if (!validationErrors.isEmpty()) {
@@ -500,6 +507,28 @@ public final class JournalPageStyleSystem {
         private int unscaledWidthBudget(int width, BookTextBlock.Kind kind, float scale) {
             float renderScale = (kind == BookTextBlock.Kind.LEVEL ? 2.0f : 1.0f) * Math.max(0.1f, scale);
             return Math.max(1, Math.round(width / renderScale));
+        }
+
+        private void trackMeasuredBounds(
+                JournalPageSlot slot,
+                SlotRegion region,
+                JournalTextRole role,
+                boolean interactive,
+                BookPageElement element,
+                float scale
+        ) {
+            SlotRegion bounds = switch (element) {
+                case BookPageElement.TextElement text -> toSlotRegion(PageCanvasRenderer.geometryForTextElement(text));
+                case BookPageElement.InteractiveTextElement text -> toSlotRegion(PageCanvasRenderer.geometryForInteractiveTextElement(text));
+                case BookPageElement.DecorationElement decoration -> toSlotRegion(PageCanvasRenderer.geometryForDecorationElement(decoration));
+                case BookPageElement.ButtonElement button -> new SlotRegion(button.x(), button.y(), button.width(), button.height());
+                default -> new SlotRegion(element.x(), element.y(), element.width(), element.height());
+            };
+            measuredBounds.add(new PlacedBounds(slot, bounds, region, role, interactive, scale));
+        }
+
+        private static SlotRegion toSlotRegion(PageCanvasRenderer.RenderedTextGeometry geometry) {
+            return new SlotRegion(geometry.drawX(), geometry.drawY(), geometry.width(), geometry.height());
         }
     }
 
@@ -666,7 +695,7 @@ public final class JournalPageStyleSystem {
 
     private static Set<JournalPageSlot> requiredSlotsFor(JournalPagePurpose purpose) {
         return switch (purpose) {
-            case CHARACTER_IDENTITY -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.SUBTITLE, JournalPageSlot.BODY);
+            case CHARACTER_IDENTITY -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.SUBTITLE);
             case CHARACTER_STANDING -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.STATS, JournalPageSlot.INTERACTION);
             case LEDGER -> EnumSet.of(JournalPageSlot.ROWS);
             case SKILL_DETAIL -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.BODY, JournalPageSlot.INTERACTION);
