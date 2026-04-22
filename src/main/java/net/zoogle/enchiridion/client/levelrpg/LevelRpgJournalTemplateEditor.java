@@ -53,7 +53,7 @@ public final class LevelRpgJournalTemplateEditor {
             return false;
         }
         if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && keyCode == GLFW.GLFW_KEY_S) {
-            saveAll();
+            saveAll(onChangedRunnable(controller, viewState));
             return true;
         }
         if (editing != null) {
@@ -320,7 +320,7 @@ public final class LevelRpgJournalTemplateEditor {
                 return true;
             }
             case SAVE -> {
-                saveAll();
+                saveAll(onChanged);
                 return true;
             }
             case DISCARD -> {
@@ -328,6 +328,7 @@ public final class LevelRpgJournalTemplateEditor {
                     JournalPageStyleSystem.restoreTemplates(savedTemplateSnapshot);
                     templateDirty = false;
                     activeDrag = null;
+                    editing = null;
                     onChanged.run();
                 }
                 return true;
@@ -342,11 +343,12 @@ public final class LevelRpgJournalTemplateEditor {
         return false;
     }
 
-    private void saveAll() {
+    private void saveAll(Runnable onChanged) {
         JournalPageStyleSystem.saveTemplates();
         JournalContentStore.instance().save();
         savedTemplateSnapshot = JournalPageStyleSystem.snapshotTemplates();
         templateDirty = false;
+        onChanged.run();
     }
 
     private Runnable onChangedRunnable(BookScreenController controller, BookViewState viewState) {

@@ -52,7 +52,7 @@ final class LevelRpgJournalComposer {
             BookPageSide pageSide = Math.floorMod(absolutePageIndex, 2) == 0 ? BookPageSide.LEFT : BookPageSide.RIGHT;
             JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.LEDGER, pageSide);
             if (pageIndex == 0) {
-                page.addCenteredText(JournalPageSlot.TITLE, JournalTextRole.TITLE, content.text(absolutePageIndex, JournalPageSlot.TITLE, "Stat Ledger"));
+                page.addTitle(content.text(absolutePageIndex, JournalPageSlot.TITLE, "Stat Ledger"));
             }
             int rowStart = pageIndex * rowsPerPage;
             int rowEnd = Math.min(stats.size(), rowStart + rowsPerPage);
@@ -75,19 +75,11 @@ final class LevelRpgJournalComposer {
         JournalContentStore content = JournalContentStore.instance();
         IdentityRecord record = parseIdentityRecord(characterSheet.identitySummary());
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.CHARACTER_IDENTITY, BookPageSide.LEFT);
-        page.addCenteredText(JournalPageSlot.TITLE, JournalTextRole.TITLE, content.text(pageIndex, JournalPageSlot.TITLE, "Character Record"));
-        page.addCenteredText(JournalPageSlot.FOCAL, JournalTextRole.FOCAL, content.text(pageIndex, JournalPageSlot.FOCAL, record.name()));
-        page.addCenteredText(
-                JournalPageSlot.SUBTITLE,
-                JournalTextRole.SUBTITLE,
-                content.text(pageIndex, JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name()))
-        );
-        page.addCenteredBody(JournalPageSlot.BODY, content.text(pageIndex, JournalPageSlot.BODY, identityProse(record, characterSheet)));
-        page.addCenteredText(
-                JournalPageSlot.FOOTER,
-                JournalTextRole.FOOTER,
-                content.text(pageIndex, JournalPageSlot.FOOTER, characterSheet.stats().size() + " disciplines recorded")
-        );
+        page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, "Character Record"));
+        page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, record.name()));
+        page.addSubtitle(content.text(pageIndex, JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name())));
+        page.addBody(content.text(pageIndex, JournalPageSlot.BODY, identityProse(record, characterSheet)));
+        page.addFooter(content.text(pageIndex, JournalPageSlot.FOOTER, characterSheet.stats().size() + " disciplines recorded"));
         return page.build();
     }
 
@@ -95,10 +87,10 @@ final class LevelRpgJournalComposer {
         JournalContentStore content = JournalContentStore.instance();
         StandingRecord standing = standingRecord(context, characterSheet);
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.CHARACTER_STANDING, BookPageSide.RIGHT);
-        page.addCenteredText(JournalPageSlot.TITLE, JournalTextRole.TITLE, content.text(pageIndex, JournalPageSlot.TITLE, "Standing"));
-        page.addCenteredText(JournalPageSlot.FOCAL, JournalTextRole.FOCAL, content.text(pageIndex, JournalPageSlot.FOCAL, "Level " + standing.level()));
-        page.addCenteredStats(JournalPageSlot.STATS, contentLines(content.text(pageIndex, JournalPageSlot.STATS, String.join("\n", standingLines(standing)))), STANDING_BLOCK_LINE_GAP);
-        page.addBottomInteraction(
+        page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, "Standing"));
+        page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, "Level " + standing.level()));
+        page.addStats(contentLines(content.text(pageIndex, JournalPageSlot.STATS, String.join("\n", standingLines(standing)))), STANDING_BLOCK_LINE_GAP);
+        page.addInteraction(
                 "standing:view-disciplines",
                 content.text(pageIndex, JournalPageSlot.INTERACTION, "View Disciplines"),
                 Component.literal("Open the Stat Ledger"),

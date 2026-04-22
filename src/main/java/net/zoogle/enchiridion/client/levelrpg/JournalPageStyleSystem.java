@@ -19,10 +19,14 @@ final class JournalPageStyleSystem {
     private static boolean debugTemplateLayout = true;
     private static final int DEBUG_SLOT_FILL = 0x00000000;
     private static final int DEBUG_SLOT_BORDER = 0x6647C7FF;
+    private static final int DEBUG_MEASURED_FILL = 0x00000000;
+    private static final int DEBUG_MEASURED_BORDER = 0x88FF6B6B;
+    private static final int DEBUG_INTERACTION_MEASURED_BORDER = 0x88FFE27A;
     private static final int DEBUG_INVALID_FILL = 0x00000000;
     private static final int DEBUG_INVALID_BORDER = 0xAAFF4D4D;
     private static final int CENTER_TOLERANCE = 2;
     private static final JournalTemplateStore TEMPLATE_STORE = JournalTemplateStore.load();
+    private static final Map<JournalPagePurpose, Map<JournalPageSlot, DefaultSlotSpec>> DEFAULT_TEMPLATES = createDefaultTemplates();
 
     private JournalPageStyleSystem() {}
 
@@ -114,139 +118,18 @@ final class JournalPageStyleSystem {
     }
 
     static TemplateSpec templateFor(JournalPagePurpose purpose, BookPageSide pageSide) {
-        JournalLayoutMetrics.PageContentRect content = JournalLayoutMetrics.pageContentRect(pageSide);
-        return switch (purpose) {
-            case CHARACTER_IDENTITY -> new TemplateSpec(
-                    purpose,
-                    pageSide,
-                    Map.of(
-                            JournalPageSlot.TITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.TITLE, new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.FOCAL, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.FOCAL, new JournalTemplateStore.NormalizedSlotRegion(0.0, 42.0 / 145.0, 1.0, 24.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.SUBTITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.SUBTITLE, new JournalTemplateStore.NormalizedSlotRegion(4.0 / content.contentWidth(), 82.0 / 145.0, (double) (content.contentWidth() - 8) / content.contentWidth(), 12.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.BODY, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.BODY, new JournalTemplateStore.NormalizedSlotRegion(12.0 / content.contentWidth(), 106.0 / 145.0, (double) (content.contentWidth() - 24) / content.contentWidth(), 28.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.FOOTER, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.FOOTER, new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 6) / 145.0, 1.0, 8.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            )
-                    ),
-                    EnumSet.of(
-                            JournalPageSlot.TITLE,
-                            JournalPageSlot.FOCAL,
-                            JournalPageSlot.SUBTITLE,
-                            JournalPageSlot.BODY
-                    ),
-                    0
+        Map<JournalPageSlot, DefaultSlotSpec> defaults = DEFAULT_TEMPLATES.get(purpose);
+        Map<JournalPageSlot, SlotDefinition> slots = new EnumMap<>(JournalPageSlot.class);
+        for (Map.Entry<JournalPageSlot, DefaultSlotSpec> entry : defaults.entrySet()) {
+            slots.put(
+                    entry.getKey(),
+                    new SlotDefinition(
+                            region(purpose, pageSide, entry.getKey(), entry.getValue().region()),
+                            entry.getValue().fit()
+                    )
             );
-            case CHARACTER_STANDING -> new TemplateSpec(
-                    purpose,
-                    pageSide,
-                    Map.of(
-                            JournalPageSlot.TITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.TITLE, new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.FOCAL, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.FOCAL, new JournalTemplateStore.NormalizedSlotRegion(0.0, 48.0 / 145.0, 1.0, 30.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.STATS, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.STATS, new JournalTemplateStore.NormalizedSlotRegion(6.0 / content.contentWidth(), 114.0 / 145.0, (double) (content.contentWidth() - 12) / content.contentWidth(), 28.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 4, false, OverflowPolicy.CLAMP, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.INTERACTION, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.INTERACTION, new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 8) / 145.0, 1.0, 8.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            )
-                    ),
-                    EnumSet.of(
-                            JournalPageSlot.TITLE,
-                            JournalPageSlot.FOCAL,
-                            JournalPageSlot.STATS,
-                            JournalPageSlot.INTERACTION
-                    ),
-                    1
-            );
-            case LEDGER -> new TemplateSpec(
-                    purpose,
-                    pageSide,
-                    Map.of(
-                            JournalPageSlot.TITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.TITLE, new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 14.0 / 145.0)),
-                                    new SlotFit(Alignment.LEFT, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.ROWS, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.ROWS, new JournalTemplateStore.NormalizedSlotRegion(0.0, 30.0 / 145.0, 1.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 36) / 145.0)),
-                                    new SlotFit(Alignment.LEFT, Integer.MAX_VALUE, false, OverflowPolicy.INVALID, 1.0f, 1.0f)
-                            )
-                    ),
-                    EnumSet.of(JournalPageSlot.ROWS),
-                    0
-            );
-            case SKILL_DETAIL -> new TemplateSpec(
-                    purpose,
-                    pageSide,
-                    Map.of(
-                            JournalPageSlot.TITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.TITLE, new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.FOCAL, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.FOCAL, new JournalTemplateStore.NormalizedSlotRegion(0.0, 46.0 / 145.0, 1.0, 24.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.BODY, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.BODY, new JournalTemplateStore.NormalizedSlotRegion(10.0 / content.contentWidth(), 88.0 / 145.0, (double) (content.contentWidth() - 20) / content.contentWidth(), 28.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.INTERACTION, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.INTERACTION, new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 10) / 145.0, 1.0, 10.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            )
-                    ),
-                    EnumSet.of(
-                            JournalPageSlot.TITLE,
-                            JournalPageSlot.FOCAL,
-                            JournalPageSlot.BODY,
-                            JournalPageSlot.INTERACTION
-                    ),
-                    1
-            );
-            case FRONT_MATTER -> new TemplateSpec(
-                    purpose,
-                    pageSide,
-                    Map.of(
-                            JournalPageSlot.TITLE, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.TITLE, new JournalTemplateStore.NormalizedSlotRegion(0.0, 16.0 / 145.0, 1.0, 14.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.BODY, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.BODY, new JournalTemplateStore.NormalizedSlotRegion(8.0 / content.contentWidth(), 52.0 / 145.0, (double) (content.contentWidth() - 16) / content.contentWidth(), 44.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
-                            ),
-                            JournalPageSlot.FOOTER, new SlotDefinition(
-                                    region(purpose, pageSide, JournalPageSlot.FOOTER, new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 10) / 145.0, 1.0, 10.0 / 145.0)),
-                                    new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
-                            )
-                    ),
-                    EnumSet.of(
-                            JournalPageSlot.TITLE,
-                            JournalPageSlot.BODY
-                    ),
-                    0
-            );
-        };
+        }
+        return new TemplateSpec(purpose, pageSide, slots, requiredSlotsFor(purpose), maxVisibleInteractionsFor(purpose));
     }
 
     static final class StyledPageBuilder {
@@ -259,6 +142,34 @@ final class JournalPageStyleSystem {
 
         private StyledPageBuilder(JournalPagePurpose purpose, BookPageSide pageSide, TemplateSpec template) {
             this.template = template;
+        }
+
+        void addTitle(String text) {
+            addCenteredText(JournalPageSlot.TITLE, JournalTextRole.TITLE, text);
+        }
+
+        void addFocal(String text) {
+            addCenteredText(JournalPageSlot.FOCAL, JournalTextRole.FOCAL, text);
+        }
+
+        void addSubtitle(String text) {
+            addCenteredText(JournalPageSlot.SUBTITLE, JournalTextRole.SUBTITLE, text);
+        }
+
+        void addBody(String text) {
+            addCenteredBody(JournalPageSlot.BODY, text);
+        }
+
+        void addStats(List<String> rows, int gap) {
+            addCenteredStats(JournalPageSlot.STATS, rows, gap);
+        }
+
+        void addFooter(String text) {
+            addCenteredText(JournalPageSlot.FOOTER, JournalTextRole.FOOTER, text);
+        }
+
+        void addInteraction(String stableId, String text, Component tooltip, BookRegionAction action) {
+            addBottomInteraction(stableId, text, tooltip, action);
         }
 
         void addCenteredText(JournalPageSlot slot, JournalTextRole role, String text) {
@@ -422,11 +333,43 @@ final class JournalPageStyleSystem {
                 SlotRegion region = entry.getValue().region();
                 elements.add(new BookPageElement.BoxElement(region.x(), region.y(), region.width(), region.height(), DEBUG_SLOT_FILL, DEBUG_SLOT_BORDER, BookPageElement.PanelVisualStyle.PANEL));
             }
+            for (PlacedBounds bounds : measuredBounds) {
+                int border = bounds.interactive()
+                        ? DEBUG_INTERACTION_MEASURED_BORDER
+                        : DEBUG_MEASURED_BORDER;
+                elements.add(new BookPageElement.BoxElement(
+                        bounds.bounds().x(),
+                        bounds.bounds().y(),
+                        bounds.bounds().width(),
+                        bounds.bounds().height(),
+                        DEBUG_MEASURED_FILL,
+                        border,
+                        BookPageElement.PanelVisualStyle.EMPHASIS
+                ));
+            }
             if (!validationErrors.isEmpty()) {
                 for (PlacedBounds bounds : measuredBounds) {
-                    elements.add(new BookPageElement.BoxElement(bounds.bounds().x(), bounds.bounds().y(), bounds.bounds().width(), bounds.bounds().height(), DEBUG_INVALID_FILL, DEBUG_INVALID_BORDER, BookPageElement.PanelVisualStyle.EMPHASIS));
+                    if (!isInvalid(bounds)) {
+                        continue;
+                    }
+                    elements.add(new BookPageElement.BoxElement(
+                            bounds.bounds().x(),
+                            bounds.bounds().y(),
+                            bounds.bounds().width(),
+                            bounds.bounds().height(),
+                            DEBUG_INVALID_FILL,
+                            DEBUG_INVALID_BORDER,
+                            BookPageElement.PanelVisualStyle.EMPHASIS
+                    ));
                 }
             }
+        }
+
+        private boolean isInvalid(PlacedBounds bounds) {
+            return bounds.bounds().x() < bounds.region().x()
+                    || bounds.bounds().right() > bounds.region().right()
+                    || bounds.bounds().y() < bounds.region().y()
+                    || bounds.bounds().bottom() > bounds.region().bottom();
         }
 
         private FittedLine fitSingleLine(String text, JournalTextRole role, SlotDefinition definition) {
@@ -523,6 +466,110 @@ final class JournalPageStyleSystem {
         return denormalize(pageSide, normalized);
     }
 
+    private static Map<JournalPagePurpose, Map<JournalPageSlot, DefaultSlotSpec>> createDefaultTemplates() {
+        Map<JournalPagePurpose, Map<JournalPageSlot, DefaultSlotSpec>> templates = new EnumMap<>(JournalPagePurpose.class);
+        templates.put(JournalPagePurpose.CHARACTER_IDENTITY, Map.of(
+                JournalPageSlot.TITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOCAL, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 42.0 / 145.0, 1.0, 24.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.SUBTITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.035, 82.0 / 145.0, 0.93, 12.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.BODY, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.105, 106.0 / 145.0, 0.79, 28.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOOTER, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 6) / 145.0, 1.0, 8.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                )
+        ));
+        templates.put(JournalPagePurpose.CHARACTER_STANDING, Map.of(
+                JournalPageSlot.TITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOCAL, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 48.0 / 145.0, 1.0, 30.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.STATS, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.053, 114.0 / 145.0, 0.894, 28.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 4, false, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.INTERACTION, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 8) / 145.0, 1.0, 8.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                )
+        ));
+        templates.put(JournalPagePurpose.LEDGER, Map.of(
+                JournalPageSlot.TITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 14.0 / 145.0),
+                        new SlotFit(Alignment.LEFT, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.ROWS, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 30.0 / 145.0, 1.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 36) / 145.0),
+                        new SlotFit(Alignment.LEFT, Integer.MAX_VALUE, false, OverflowPolicy.INVALID, 1.0f, 1.0f)
+                )
+        ));
+        templates.put(JournalPagePurpose.SKILL_DETAIL, Map.of(
+                JournalPageSlot.TITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOCAL, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 46.0 / 145.0, 1.0, 24.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.BODY, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.088, 88.0 / 145.0, 0.824, 28.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.INTERACTION, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 10) / 145.0, 1.0, 10.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                )
+        ));
+        templates.put(JournalPagePurpose.FRONT_MATTER, Map.of(
+                JournalPageSlot.TITLE, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 16.0 / 145.0, 1.0, 14.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.BODY, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.07, 52.0 / 145.0, 0.86, 44.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOOTER, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 10) / 145.0, 1.0, 10.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
+                )
+        ));
+        return templates;
+    }
+
+    private static Set<JournalPageSlot> requiredSlotsFor(JournalPagePurpose purpose) {
+        return switch (purpose) {
+            case CHARACTER_IDENTITY -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.SUBTITLE, JournalPageSlot.BODY);
+            case CHARACTER_STANDING -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.STATS, JournalPageSlot.INTERACTION);
+            case LEDGER -> EnumSet.of(JournalPageSlot.ROWS);
+            case SKILL_DETAIL -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.BODY, JournalPageSlot.INTERACTION);
+            case FRONT_MATTER -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.BODY);
+        };
+    }
+
+    private static int maxVisibleInteractionsFor(JournalPagePurpose purpose) {
+        return switch (purpose) {
+            case CHARACTER_STANDING, SKILL_DETAIL -> 1;
+            default -> 0;
+        };
+    }
+
     private static JournalTemplateStore.NormalizedSlotRegion normalize(BookPageSide pageSide, SlotRegion region) {
         JournalLayoutMetrics.PageContentRect content = JournalLayoutMetrics.pageContentRect(pageSide);
         return new JournalTemplateStore.NormalizedSlotRegion(
@@ -576,6 +623,11 @@ final class JournalPageStyleSystem {
             OverflowPolicy overflowPolicy,
             float minScale,
             float maxScale
+    ) {}
+
+    private record DefaultSlotSpec(
+            JournalTemplateStore.NormalizedSlotRegion region,
+            SlotFit fit
     ) {}
 
     private record FittedLine(String text, int x, int width, int height) {}
