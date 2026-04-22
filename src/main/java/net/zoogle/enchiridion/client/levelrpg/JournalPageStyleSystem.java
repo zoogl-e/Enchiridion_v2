@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 
 public final class JournalPageStyleSystem {
-    private static boolean debugTemplateLayout = true;
+    private static boolean debugTemplateLayout = false;
     private static final int DEBUG_SLOT_FILL = 0x00000000;
     private static final int DEBUG_SLOT_BORDER = 0x6647C7FF;
     private static final int DEBUG_MEASURED_FILL = 0x00000000;
@@ -174,9 +174,29 @@ public final class JournalPageStyleSystem {
 
         void addCenteredText(JournalPageSlot slot, JournalTextRole role, String text) {
             SlotDefinition definition = registerSlot(slot);
+            if (definition.fit().wrapAllowed() && role != JournalTextRole.BODY) {
+                addCenteredWrappedText(slot, role, text, definition);
+                return;
+            }
             FittedLine line = fitSingleLine(text, role, definition);
             elements.add(JournalElementFactory.centeredRoleTextElement(role, line.text(), line.x(), definition.region().y(), line.width(), line.height(), line.scale()));
             measuredBounds.add(new PlacedBounds(slot, new SlotRegion(line.x(), definition.region().y(), line.width(), line.height()), definition.region(), role, false, line.scale()));
+        }
+
+        private void addCenteredWrappedText(JournalPageSlot slot, JournalTextRole role, String text, SlotDefinition definition) {
+            List<String> lines = fitWrappedStaticText(text, definition, role);
+            int cursorY = definition.region().y();
+            int lineHeight = JournalLayoutMetrics.lineHeightFor(kindFor(role));
+            for (String line : lines) {
+                int textWidth = Math.max(1, Minecraft.getInstance().font.width(line));
+                int drawX = centeredX(definition.region(), textWidth);
+                elements.add(JournalElementFactory.centeredRoleTextElement(role, line, definition.region().x(), cursorY, definition.region().width()));
+                measuredBounds.add(new PlacedBounds(slot, new SlotRegion(drawX, cursorY, textWidth, lineHeight), definition.region(), role, false, 1.0f));
+                cursorY += lineHeight;
+            }
+            if (cursorY > definition.region().bottom()) {
+                validationErrors.add("Wrapped text overflowed slot " + slot);
+            }
         }
 
         void addCenteredBody(JournalPageSlot slot, String text) {
@@ -418,6 +438,11 @@ public final class JournalPageStyleSystem {
             return Math.min(definition.fit().maxLines(), regionCapacity);
         }
 
+        private List<String> fitWrappedStaticText(String text, SlotDefinition definition, JournalTextRole role) {
+            int maxLines = Math.min(definition.fit().maxLines(), maxLinesThatFit(definition.region(), kindFor(role)));
+            return clampStaticLines(text, definition.region().width(), maxLines);
+        }
+
         private int maxLinesThatFit(SlotRegion region, BookTextBlock.Kind kind) {
             int lineHeight = JournalLayoutMetrics.lineHeightFor(kind);
             return Math.max(1, region.height() / Math.max(1, lineHeight));
@@ -504,6 +529,22 @@ public final class JournalPageStyleSystem {
         return lines;
     }
 
+    static List<String> clampStaticLines(String text, int width, int maxLines) {
+        List<JournalPaginationEngine.MeasuredLine> wrapped = JournalPaginationEngine.wrapStaticText(text, width);
+        List<String> lines = new ArrayList<>();
+        for (int index = 0; index < wrapped.size() && lines.size() < maxLines; index++) {
+            String line = wrapped.get(index).text();
+            if (!line.isBlank()) {
+                lines.add(line);
+            }
+        }
+        if (wrapped.size() > maxLines && !lines.isEmpty()) {
+            int lastIndex = lines.size() - 1;
+            lines.set(lastIndex, withEllipsis(lines.get(lastIndex), width));
+        }
+        return lines;
+    }
+
     private static boolean intersects(SlotRegion left, SlotRegion right) {
         return left.x() < right.right()
                 && left.right() > right.x()
@@ -534,7 +575,7 @@ public final class JournalPageStyleSystem {
                 ),
                 JournalPageSlot.SUBTITLE, new DefaultSlotSpec(
                         new JournalTemplateStore.NormalizedSlotRegion(0.035, 82.0 / 145.0, 0.93, 12.0 / 145.0),
-                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
+                        new SlotFit(Alignment.CENTER, 2, true, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
                 ),
                 JournalPageSlot.BODY, new DefaultSlotSpec(
                         new JournalTemplateStore.NormalizedSlotRegion(0.105, 106.0 / 145.0, 0.79, 28.0 / 145.0),
@@ -565,12 +606,16 @@ public final class JournalPageStyleSystem {
         ));
         templates.put(JournalPagePurpose.LEDGER, Map.of(
                 JournalPageSlot.TITLE, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 14.0 / 145.0),
-                        new SlotFit(Alignment.LEFT, 1, false, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 12.0 / 145.0, 1.0, 12.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
                 ),
                 JournalPageSlot.ROWS, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 30.0 / 145.0, 1.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 36) / 145.0),
+                        new JournalTemplateStore.NormalizedSlotRegion(0.045, 34.0 / 145.0, 0.91, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 48) / 145.0),
                         new SlotFit(Alignment.LEFT, Integer.MAX_VALUE, false, OverflowPolicy.INVALID, 1.0f, 1.0f)
+                ),
+                JournalPageSlot.FOOTER, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 8) / 145.0, 1.0, 8.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.95f, 1.0f)
                 )
         ));
         templates.put(JournalPagePurpose.SKILL_DETAIL, Map.of(

@@ -640,46 +640,19 @@ public final class PageCanvasRenderer {
         graphics.pose().pushPose();
         graphics.pose().translate(x, y, 0.0f);
         graphics.pose().scale(renderScale, renderScale, 1.0f);
-        if (TEXT_RENDER_MODE == ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING) {
-            arcaneTextRenderer.renderGuiLine(
-                    graphics,
-                    font,
-                    line,
-                    0,
-                    0,
-                    color,
-                    kind,
-                    textAlpha,
-                    ArcaneTextRenderer.lineSeed(line, kind, lineIndex),
-                    glitchStrength
-            );
-        } else {
-            graphics.drawString(font, line, 0, 0, color, false);
-        }
+        graphics.drawString(font, line, 0, 0, color, false);
         graphics.pose().popPose();
     }
 
     private void renderScaledElementLine(Graphics2D graphics, String line, int x, int baselineY, int color, BookTextBlock.Kind kind, float textAlpha, int lineIndex, float glitchStrength, float scale) {
         java.awt.geom.AffineTransform originalTransform = graphics.getTransform();
+        java.awt.Color originalColor = graphics.getColor();
         graphics.translate(x, baselineY);
         double renderScale = effectiveRenderScale(kind, scale);
         graphics.scale(renderScale, renderScale);
-        if (TEXT_RENDER_MODE == ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING) {
-            arcaneTextRenderer.renderGraphicsLine(
-                    graphics,
-                    line,
-                    0,
-                    0,
-                    color,
-                    kind,
-                    textAlpha,
-                    ArcaneTextRenderer.lineSeed(line, kind, lineIndex),
-                    glitchStrength
-            );
-        } else {
-            graphics.setColor(new Color(color, true));
-            graphics.drawString(line, 0, 0);
-        }
+        graphics.setColor(new Color(color, true));
+        graphics.drawString(line, 0, 0);
+        graphics.setColor(originalColor);
         graphics.setTransform(originalTransform);
     }
 

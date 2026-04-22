@@ -51,9 +51,7 @@ final class LevelRpgJournalComposer {
             int absolutePageIndex = firstLedgerPageIndex + pageIndex;
             BookPageSide pageSide = Math.floorMod(absolutePageIndex, 2) == 0 ? BookPageSide.LEFT : BookPageSide.RIGHT;
             JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.LEDGER, pageSide);
-            if (pageIndex == 0) {
-                page.addTitle(content.text(absolutePageIndex, JournalPageSlot.TITLE, "Stat Ledger"));
-            }
+            page.addTitle(content.text(absolutePageIndex, JournalPageSlot.TITLE, pageIndex == 0 ? "Stat Ledger" : "Ledger"));
             int rowStart = pageIndex * rowsPerPage;
             int rowEnd = Math.min(stats.size(), rowStart + rowsPerPage);
             List<JournalCharacterStat> defaultRows = stats.subList(rowStart, rowEnd);
@@ -62,6 +60,7 @@ final class LevelRpgJournalComposer {
                     ledgerRowsForPage(content.text(absolutePageIndex, JournalPageSlot.ROWS, defaultLedgerRows(defaultRows)), defaultRows),
                     skillStartPages
             );
+            page.addFooter(content.text(absolutePageIndex, JournalPageSlot.FOOTER, "Folio " + (pageIndex + 1) + " of " + pageCount));
             pages.add(page.build());
         }
         return List.copyOf(pages);

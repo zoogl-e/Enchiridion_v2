@@ -303,12 +303,12 @@ final class JournalElementFactory {
         int rowHeight = ledgerRowHeight();
         int labelHeight = Minecraft.getInstance().font.lineHeight;
         int labelY = rowY + Math.max(0, (rowHeight - labelHeight) / 2);
-        int labelX = contentRect.contentX();
+        int labelX = contentRect.contentX() + 2;
         int labelWidth = Math.max(1, Minecraft.getInstance().font.width(label));
         int valueWidth = Math.max(1, Minecraft.getInstance().font.width(valueText));
-        int valueX = contentRect.contentX() + contentRect.contentWidth() - valueWidth;
-        int dotsX = labelX + labelWidth + 6;
-        int dotWidth = Math.max(0, valueX - dotsX - 4);
+        int valueX = contentRect.contentX() + contentRect.contentWidth() - valueWidth - 2;
+        int dotsX = labelX + labelWidth + 8;
+        int dotWidth = Math.max(0, valueX - dotsX - 6);
         int dotCount = Math.max(2, dotWidth / Math.max(1, Minecraft.getInstance().font.width(".")));
         return new LedgerRowLayout(
                 label,
@@ -330,7 +330,7 @@ final class JournalElementFactory {
         return Math.max(
                 JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY),
                 JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.SUBTITLE)
-        );
+        ) + 2;
     }
 
     static BookPageElement.InteractiveTextElement ledgerLabel(LedgerRowLayout rowLayout) {

@@ -4,8 +4,8 @@ import net.zoogle.enchiridion.client.levelrpg.JournalPageStyleSystem;
 
 public final class BookDebugSettings {
     private static boolean showGuiTextDebug = false;
-    private static boolean pageLocalInteractionDebug = true;
-    private static boolean hoveredInteractiveBoundsDebug = true;
+    private static boolean pageLocalInteractionDebug = false;
+    private static boolean hoveredInteractiveBoundsDebug = false;
     private static boolean interactiveTextBoundsDebug = false;
 
     private BookDebugSettings() {}
