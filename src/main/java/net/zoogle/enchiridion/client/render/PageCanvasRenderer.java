@@ -287,20 +287,22 @@ public final class PageCanvasRenderer {
         }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        graphics.drawString(font, element.text(), element.x(), element.y(), defaultInk, false);
+        int textY = interactiveTextDrawY(element);
+        int textHeight = interactiveGlyphHeight(element.kind());
+        renderLine(graphics, element.text().getString(), element.x(), textY, element.width(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
         if (titleLink) {
             int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
-            graphics.drawString(font, "\u2058", element.x() - 6, element.y(), aura, false);
-            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), aura, false);
+            graphics.drawString(font, "\u2058", element.x() - 6, textY, aura, false);
+            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, textY, aura, false);
         }
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            graphics.drawString(font, element.text(), element.x(), element.y(), ink, false);
+            renderLine(graphics, element.text().getString(), element.x(), textY, element.width(), ink, element.kind(), textAlpha, 0, 0.0f);
             if (titleLink) {
-                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, element.y() - 6), support, false);
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, textY - 6), support, false);
             } else {
-                int underlineY = element.y() + Math.max(1, element.height() - 2);
+                int underlineY = textY + Math.max(1, textHeight - 2);
                 int leftInset = Math.min(3, Math.max(1, element.width() / 8));
                 int rightInset = leftInset;
                 int underlineX0 = element.x() + leftInset;
@@ -311,8 +313,8 @@ public final class PageCanvasRenderer {
                 if (underlineX1 - underlineX0 > 6) {
                     graphics.fill(underlineX0 + 2, underlineY + 2, underlineX1 - 2, underlineY + 3, support);
                 }
-                graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), support, false);
-                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y(), underlineY - 5), support, false);
+                graphics.drawString(font, "\u2058", element.x() + element.width() + 2, textY, support, false);
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(textY, underlineY - 5), support, false);
             }
         }
     }
@@ -363,9 +365,10 @@ public final class PageCanvasRenderer {
         }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        int baselineY = element.y() + graphics.getFontMetrics().getAscent();
-        graphics.setColor(new Color(defaultInk, true));
-        graphics.drawString(element.text().getString(), element.x(), baselineY);
+        int textY = interactiveTextDrawY(element);
+        int baselineY = textY + graphics.getFontMetrics().getAscent();
+        int textHeight = interactiveGlyphHeight(element.kind());
+        renderLine(graphics, element.text().getString(), element.x(), baselineY, element.width(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
         if (titleLink) {
             int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
             graphics.setColor(new Color(aura, true));
@@ -375,13 +378,12 @@ public final class PageCanvasRenderer {
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            graphics.setColor(new Color(ink, true));
-            graphics.drawString(element.text().getString(), element.x(), baselineY);
+            renderLine(graphics, element.text().getString(), element.x(), baselineY, element.width(), ink, element.kind(), textAlpha, 0, 0.0f);
             if (titleLink) {
                 graphics.setColor(new Color(support, true));
                 graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(graphics.getFontMetrics().getAscent(), baselineY - 6));
             } else {
-                int underlineY = element.y() + Math.max(1, element.height() - 2);
+                int underlineY = textY + Math.max(1, textHeight - 2);
                 int leftInset = Math.min(3, Math.max(1, element.width() / 8));
                 int rightInset = leftInset;
                 int underlineX0 = element.x() + leftInset;
@@ -660,20 +662,21 @@ public final class PageCanvasRenderer {
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         int support = applyAlpha(0xB0D7C89E, textAlpha);
-        renderScaledElementLine(graphics, element.text().getString(), element.x(), element.y(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
+        int textY = interactiveTextDrawY(element);
+        renderScaledElementLine(graphics, element.text().getString(), element.x(), textY, defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
         float renderScale = effectiveRenderScale(element.kind(), element.scale());
         int logicalWidth = Math.max(1, Math.round(element.width() / renderScale));
-        int logicalHeight = Math.max(1, Math.round(element.height() / Math.max(0.1f, element.scale())));
+        int logicalHeight = interactiveGlyphHeight(element.kind());
         if (titleLink) {
-            graphics.drawString(font, "\u2058", element.x() - Math.round(6 * renderScale), element.y(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
-            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+            graphics.drawString(font, "\u2058", element.x() - Math.round(6 * renderScale), textY, applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, textY, applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
         }
         if (hovered) {
-            renderScaledElementLine(graphics, element.text().getString(), element.x(), element.y(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
+            renderScaledElementLine(graphics, element.text().getString(), element.x(), textY, applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
             if (titleLink) {
-                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, element.y() - 6), support, false);
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, textY - 6), support, false);
             } else {
-                int underlineY = element.y() + Math.max(1, logicalHeight - 2);
+                int underlineY = textY + Math.max(1, logicalHeight - 2);
                 int leftInset = Math.min(3, Math.max(1, logicalWidth / 8));
                 int underlineX0 = element.x() + Math.round(leftInset * renderScale);
                 int underlineX1 = element.x() + element.width() - Math.round(leftInset * renderScale);
@@ -690,7 +693,8 @@ public final class PageCanvasRenderer {
     private void renderScaledInteractiveTextElement(Graphics2D graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        int baselineY = element.y() + graphics.getFontMetrics().getAscent();
+        int textY = interactiveTextDrawY(element);
+        int baselineY = textY + graphics.getFontMetrics().getAscent();
         int support = applyAlpha(0xB0D7C89E, textAlpha);
         renderScaledElementLine(graphics, element.text().getString(), element.x(), baselineY, defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
         if (hovered) {
@@ -709,6 +713,14 @@ public final class PageCanvasRenderer {
 
     private float effectiveRenderScale(BookTextBlock.Kind kind, float scale) {
         return (kind == BookTextBlock.Kind.LEVEL ? 2.0f : 1.0f) * Math.max(0.1f, scale);
+    }
+
+    private int interactiveTextDrawY(BookPageElement.InteractiveTextElement element) {
+        return element.y() + Math.max(0, (element.height() - interactiveGlyphHeight(element.kind())) / 2);
+    }
+
+    private int interactiveGlyphHeight(BookTextBlock.Kind kind) {
+        return Math.max(1, lineHeightFor(kind) - LINE_SPACING);
     }
 
     private void renderLargeLevelLine(GuiGraphics graphics, String line, int x, int y, int width, int color) {

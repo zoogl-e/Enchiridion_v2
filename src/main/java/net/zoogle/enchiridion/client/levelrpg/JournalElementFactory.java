@@ -301,8 +301,8 @@ final class JournalElementFactory {
         String valueText = String.valueOf(stat.value());
         JournalLayoutMetrics.PageContentRect contentRect = JournalLayoutMetrics.pageContentRect(pageSide);
         int rowHeight = ledgerRowHeight();
-        int labelHeight = Minecraft.getInstance().font.lineHeight;
-        int labelY = rowY + Math.max(0, (rowHeight - labelHeight) / 2);
+        int labelHeight = rowHeight;
+        int labelY = rowY;
         int labelX = contentRect.contentX() + 2;
         int labelWidth = Math.max(1, Minecraft.getInstance().font.width(label));
         int valueWidth = Math.max(1, Minecraft.getInstance().font.width(valueText));
