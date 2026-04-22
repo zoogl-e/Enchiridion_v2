@@ -87,26 +87,49 @@ final class BookInteractionResolver {
         List<PageInteractiveNode> resolved = new ArrayList<>();
         for (BookPageElement.InteractiveElement interactiveElement : pageInteractiveElements(displayedSpread)) {
             BookPageSide pageSide = pageSideFor(displayedSpread, interactiveElement);
-            LocalInteractionBounds bounds = localBoundsFor(interactiveElement);
-            resolved.add(buildNode(
-                    controller,
-                    sceneRenderer,
-                    layout,
-                    projectionFocusOffset,
-                    interactiveElement.stableId(),
-                    pageSide,
-                    bounds.x(),
-                    bounds.y(),
-                    bounds.width(),
-                    bounds.height(),
-                    labelFor(interactiveElement),
-                    interactiveElement.tooltip(),
-                    interactiveElement.action(),
-                    interactiveElement.enabled(),
-                    visualTypeFor(interactiveElement),
-                    interactiveElement,
-                    null
-            ));
+            switch (interactiveElement) {
+                case BookPageElement.InteractiveTextElement text -> {
+                    PageCanvasRenderer.RenderedTextGeometry geometry = PageCanvasRenderer.inlineInteractionGeometryFor(text);
+                    resolved.add(buildNode(
+                            controller,
+                            sceneRenderer,
+                            layout,
+                            projectionFocusOffset,
+                            text.stableId(),
+                            pageSide,
+                            geometry.drawX(),
+                            geometry.drawY(),
+                            geometry.width(),
+                            geometry.height(),
+                            text.text(),
+                            text.tooltip(),
+                            text.action(),
+                            text.enabled(),
+                            visualTypeFor(text),
+                            text,
+                            null
+                    ));
+                }
+                case BookPageElement.ButtonElement button -> resolved.add(buildNode(
+                        controller,
+                        sceneRenderer,
+                        layout,
+                        projectionFocusOffset,
+                        button.stableId(),
+                        pageSide,
+                        button.x(),
+                        button.y(),
+                        button.width(),
+                        button.height(),
+                        button.label(),
+                        button.tooltip(),
+                        button.action(),
+                        button.enabled(),
+                        visualTypeFor(button),
+                        button,
+                        null
+                ));
+            }
         }
         for (BookInteractiveRegion region : controller.definition().provider().interactiveRegions(controller.context(), displayedSpreadIndex)) {
             resolved.add(buildNode(
@@ -348,13 +371,6 @@ final class BookInteractionResolver {
         return PageInteractiveNode.VisualType.HOTSPOT;
     }
 
-    private static Component labelFor(BookPageElement.InteractiveElement interactiveElement) {
-        return switch (interactiveElement) {
-            case BookPageElement.InteractiveTextElement text -> text.text();
-            case BookPageElement.ButtonElement button -> button.label();
-        };
-    }
-
     private static String regionLabel(BookInteractiveRegion region) {
         if (region.visibleLabel() != null) {
             return region.visibleLabel().getString();
@@ -373,16 +389,4 @@ final class BookInteractionResolver {
         return prefix + ":" + side + ":" + x + ":" + y + ":" + width + ":" + height + ":" + label;
     }
 
-    private static LocalInteractionBounds localBoundsFor(BookPageElement.InteractiveElement interactiveElement) {
-        return switch (interactiveElement) {
-            case BookPageElement.InteractiveTextElement text -> {
-                PageCanvasRenderer.RenderedTextGeometry geometry = PageCanvasRenderer.inlineInteractionGeometryFor(text);
-                yield new LocalInteractionBounds(geometry.drawX(), geometry.drawY(), geometry.width(), geometry.height());
-            }
-            case BookPageElement.ButtonElement button ->
-                    new LocalInteractionBounds(button.x(), button.y(), button.width(), button.height());
-        };
-    }
-
-    private record LocalInteractionBounds(int x, int y, int width, int height) {}
 }

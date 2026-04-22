@@ -13,6 +13,7 @@ import java.util.List;
 public final class BookViewState {
     private static final int INITIAL_TEXT_DELAY_TICKS = 32;
     private static final float TEXT_FADE_OUT_PER_TICK = 0.45f;
+    private static final float TEXT_FADE_OUT_CLOSING_PER_TICK = 0.08f;
     private static final float TEXT_FADE_IN_PER_TICK = 0.18f;
     private static final float TEXT_ALPHA_EPSILON = 0.01f;
     private static final float INSPECT_YAW_PER_PIXEL = 0.45f;
@@ -63,7 +64,12 @@ public final class BookViewState {
         boolean opening = controller.isOpening();
         boolean closed = controller.isClosed();
         boolean closing = controller.isClosing();
-        if (arriving || closed || closing) {
+        if (closing) {
+            textTransitionState = TextTransitionState.FADING_OUT;
+            textAlpha = Math.max(0.0f, textAlpha - TEXT_FADE_OUT_CLOSING_PER_TICK);
+            return;
+        }
+        if (arriving || closed) {
             textTransitionState = TextTransitionState.FADING_OUT;
             textAlpha = Math.max(0.0f, textAlpha - TEXT_FADE_OUT_PER_TICK);
             return;
