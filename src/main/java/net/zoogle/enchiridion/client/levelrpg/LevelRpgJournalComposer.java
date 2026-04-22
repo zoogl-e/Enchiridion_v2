@@ -77,8 +77,6 @@ final class LevelRpgJournalComposer {
         page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, "Character Record"));
         page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, record.name()));
         page.addSubtitle(content.text(pageIndex, JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name())));
-        page.addBody(content.text(pageIndex, JournalPageSlot.BODY, identityProse(record, characterSheet)));
-        page.addFooter(content.text(pageIndex, JournalPageSlot.FOOTER, characterSheet.stats().size() + " disciplines recorded"));
         return page.build();
     }
 

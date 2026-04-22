@@ -223,8 +223,19 @@ public final class JournalPageStyleSystem {
             int lineHeight = JournalLayoutMetrics.lineHeightFor(kindFor(JournalTextRole.BODY));
             for (String row : clamped) {
                 int textWidth = Math.max(1, Minecraft.getInstance().font.width(row));
-                int drawX = centeredX(definition.region(), textWidth);
-                elements.add(JournalElementFactory.centeredRoleTextElement(JournalTextRole.BODY, row, definition.region().x(), cursorY, definition.region().width()));
+                int drawX = switch (definition.fit().alignment()) {
+                    case CENTER -> centeredX(definition.region(), textWidth);
+                    case LEFT -> definition.region().x();
+                };
+                elements.add(new BookPageElement.TextElement(
+                        kindFor(JournalTextRole.BODY),
+                        Component.literal(row),
+                        drawX,
+                        cursorY,
+                        textWidth,
+                        lineHeight,
+                        1.0f
+                ));
                 measuredBounds.add(new PlacedBounds(slot, new SlotRegion(drawX, cursorY, textWidth, lineHeight), definition.region(), JournalTextRole.BODY, false, 1.0f));
                 cursorY += lineHeight + Math.max(0, gap);
             }
@@ -597,7 +608,7 @@ public final class JournalPageStyleSystem {
                 ),
                 JournalPageSlot.STATS, new DefaultSlotSpec(
                         new JournalTemplateStore.NormalizedSlotRegion(0.053, 114.0 / 145.0, 0.894, 28.0 / 145.0),
-                        new SlotFit(Alignment.CENTER, 4, false, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                        new SlotFit(Alignment.LEFT, 4, false, OverflowPolicy.CLAMP, 1.0f, 1.0f)
                 ),
                 JournalPageSlot.INTERACTION, new DefaultSlotSpec(
                         new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 8) / 145.0, 1.0, 8.0 / 145.0),
