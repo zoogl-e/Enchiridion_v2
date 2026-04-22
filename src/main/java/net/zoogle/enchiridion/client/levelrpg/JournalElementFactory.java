@@ -35,6 +35,7 @@ final class JournalElementFactory {
                 contentY,
                 textWidth,
                 textHeight,
+                1.0f,
                 tooltip,
                 action,
                 true
@@ -63,6 +64,7 @@ final class JournalElementFactory {
                 contentY,
                 textWidth,
                 textHeight,
+                1.0f,
                 tooltip,
                 action,
                 true
@@ -84,7 +86,8 @@ final class JournalElementFactory {
                 drawX,
                 contentY,
                 textWidth,
-                JournalLayoutMetrics.lineHeightFor(kind)
+                JournalLayoutMetrics.lineHeightFor(kind),
+                1.0f
         );
     }
 
@@ -103,7 +106,28 @@ final class JournalElementFactory {
                 drawX,
                 contentY,
                 textWidth,
-                JournalLayoutMetrics.lineHeightFor(kind)
+                JournalLayoutMetrics.lineHeightFor(kind),
+                1.0f
+        );
+    }
+
+    static BookPageElement.TextElement centeredRoleTextElement(
+            JournalTextRole role,
+            String text,
+            int x,
+            int y,
+            int width,
+            int height,
+            float scale
+    ) {
+        return new BookPageElement.TextElement(
+                JournalPageStyleSystem.kindFor(role),
+                Component.literal(text),
+                x,
+                y,
+                width,
+                height,
+                scale
         );
     }
 
@@ -131,21 +155,27 @@ final class JournalElementFactory {
             String stableId,
             JournalTextRole role,
             String text,
-            BookPageSide pageSide,
+            int x,
             int y,
+            int width,
+            int height,
+            float scale,
             Component tooltip,
             BookRegionAction action
     ) {
-        JournalLayoutMetrics.PageContentRect rect = JournalLayoutMetrics.pageContentRect(pageSide);
-        return centeredPageTextLayout(
+        return new PageInteractiveTextLayout(
                 stableId,
+                BookPageElement.InteractiveVisualStyle.MANUSCRIPT_LINK,
                 JournalPageStyleSystem.kindFor(role),
                 text,
-                rect.contentX(),
+                x,
                 y,
-                rect.contentWidth(),
+                width,
+                height,
+                scale,
                 tooltip,
-                action
+                action,
+                true
         );
     }
 
@@ -220,12 +250,13 @@ final class JournalElementFactory {
                         cursorY,
                         textWidth,
                         JournalLayoutMetrics.lineHeightFor(kind),
+                        1.0f,
                         tooltip,
                         action,
                         true
                 )));
             } else {
-                elements.add(new BookPageElement.TextElement(kind, Component.literal(line.text()), drawX, cursorY, textWidth, JournalLayoutMetrics.lineHeightFor(kind)));
+                elements.add(new BookPageElement.TextElement(kind, Component.literal(line.text()), drawX, cursorY, textWidth, JournalLayoutMetrics.lineHeightFor(kind), 1.0f));
             }
             cursorY += JournalLayoutMetrics.lineHeightFor(kind);
         }
@@ -257,7 +288,8 @@ final class JournalElementFactory {
                     drawX,
                     cursorY,
                     textWidth,
-                    JournalLayoutMetrics.lineHeightFor(kind)
+                    JournalLayoutMetrics.lineHeightFor(kind),
+                    1.0f
             ));
             cursorY += JournalLayoutMetrics.lineHeightFor(kind);
         }
@@ -311,6 +343,7 @@ final class JournalElementFactory {
                 rowLayout.labelY(),
                 rowLayout.labelWidth(),
                 rowLayout.labelHeight(),
+                1.0f,
                 Component.literal("Open " + rowLayout.labelText() + " entry"),
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
                         && LevelRpgJournalInteractionBridge.jumpToJournalPage(bookContext, rowLayout.targetPageIndex()),
@@ -327,6 +360,7 @@ final class JournalElementFactory {
                 layout.y(),
                 layout.width(),
                 layout.height(),
+                layout.scale(),
                 layout.tooltip(),
                 layout.action(),
                 layout.visualStyle(),
@@ -390,6 +424,7 @@ final class JournalElementFactory {
             int y,
             int width,
             int height,
+            float scale,
             Component tooltip,
             BookRegionAction action,
             boolean enabled

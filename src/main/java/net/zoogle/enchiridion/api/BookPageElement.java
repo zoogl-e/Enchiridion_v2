@@ -48,13 +48,15 @@ public sealed interface BookPageElement permits
             int x,
             int y,
             int width,
-            int height
+            int height,
+            float scale
     ) implements BookPageElement {
         public TextElement {
             Objects.requireNonNull(kind, "kind");
             Objects.requireNonNull(text, "text");
             width = Math.max(1, width);
             height = Math.max(1, height);
+            scale = Math.max(0.1f, scale);
         }
     }
 
@@ -66,6 +68,7 @@ public sealed interface BookPageElement permits
             int y,
             int width,
             int height,
+            float scale,
             Component tooltip,
             BookRegionAction action,
             InteractiveVisualStyle visualStyle,
@@ -79,6 +82,7 @@ public sealed interface BookPageElement permits
             Objects.requireNonNull(visualStyle, "visualStyle");
             width = Math.max(1, width);
             height = Math.max(1, height);
+            scale = Math.max(0.1f, scale);
         }
     }
 

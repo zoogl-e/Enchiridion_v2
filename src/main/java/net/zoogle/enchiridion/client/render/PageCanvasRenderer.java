@@ -8,13 +8,13 @@ import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookTextBlock;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
+import net.zoogle.enchiridion.client.ui.BookDebugSettings;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.util.List;
 
 public final class PageCanvasRenderer {
-    private static final boolean DEBUG_INTERACTIVE_TEXT_BOUNDS = false;
     public static final int PAGE_MARGIN_X = 10;
     public static final int PAGE_MARGIN_Y = 10;
     public static final int RIGHT_PAGE_INSET = 8;
@@ -189,7 +189,7 @@ public final class PageCanvasRenderer {
     private void renderPageElement(GuiGraphics graphics, BookPageElement element, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         switch (element) {
             case BookPageElement.TextElement text ->
-                    renderLine(graphics, text.text().getString(), text.x(), text.y(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
+                    renderScaledElementLine(graphics, text.text().getString(), text.x(), text.y(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f, text.scale());
             case BookPageElement.DecorationElement decoration ->
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
@@ -208,7 +208,7 @@ public final class PageCanvasRenderer {
     private void renderPageElementToGraphics2D(Graphics2D graphics, BookPageElement element, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         switch (element) {
             case BookPageElement.TextElement text ->
-                    renderLine(graphics, text.text().getString(), text.x(), text.y() + graphics.getFontMetrics().getAscent(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
+                    renderScaledElementLine(graphics, text.text().getString(), text.x(), text.y() + graphics.getFontMetrics().getAscent(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f, text.scale());
             case BookPageElement.DecorationElement decoration ->
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y() + graphics.getFontMetrics().getAscent(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
@@ -251,6 +251,7 @@ public final class PageCanvasRenderer {
                 node.localY(),
                 node.localWidth(),
                 node.localHeight(),
+                1.0f,
                 node.tooltip(),
                 node.action(),
                 BookPageElement.InteractiveVisualStyle.MANUSCRIPT_LINK,
@@ -280,6 +281,10 @@ public final class PageCanvasRenderer {
     }
 
     private void renderInteractiveTextElement(GuiGraphics graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
+        if (Math.abs(element.scale() - 1.0f) > 0.001f) {
+            renderScaledInteractiveTextElement(graphics, element, textAlpha, hovered);
+            return;
+        }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         graphics.drawString(font, element.text(), element.x(), element.y(), defaultInk, false);
@@ -352,6 +357,10 @@ public final class PageCanvasRenderer {
     }
 
     private void renderInteractiveTextElementToGraphics2D(Graphics2D graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
+        if (Math.abs(element.scale() - 1.0f) > 0.001f) {
+            renderScaledInteractiveTextElement(graphics, element, textAlpha, hovered);
+            return;
+        }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         int baselineY = element.y() + graphics.getFontMetrics().getAscent();
@@ -389,7 +398,7 @@ public final class PageCanvasRenderer {
                 graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y() + graphics.getFontMetrics().getAscent() - 3, underlineY - 2));
             }
         }
-        if (DEBUG_INTERACTIVE_TEXT_BOUNDS) {
+        if (BookDebugSettings.interactiveTextBoundsDebug()) {
             graphics.setColor(new Color(hovered ? 0xCCAA33FF : 0xAA33CC66, true));
             graphics.drawRect(element.x(), element.y(), Math.max(1, element.width() - 1), Math.max(1, element.height() - 1));
         }
@@ -624,6 +633,109 @@ public final class PageCanvasRenderer {
 
         graphics.setColor(new Color(color, true));
         graphics.drawString(line, drawX, baselineY);
+    }
+
+    private void renderScaledElementLine(GuiGraphics graphics, String line, int x, int y, int color, BookTextBlock.Kind kind, float textAlpha, int lineIndex, float glitchStrength, float scale) {
+        float renderScale = effectiveRenderScale(kind, scale);
+        graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 0.0f);
+        graphics.pose().scale(renderScale, renderScale, 1.0f);
+        if (TEXT_RENDER_MODE == ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING) {
+            arcaneTextRenderer.renderGuiLine(
+                    graphics,
+                    font,
+                    line,
+                    0,
+                    0,
+                    color,
+                    kind,
+                    textAlpha,
+                    ArcaneTextRenderer.lineSeed(line, kind, lineIndex),
+                    glitchStrength
+            );
+        } else {
+            graphics.drawString(font, line, 0, 0, color, false);
+        }
+        graphics.pose().popPose();
+    }
+
+    private void renderScaledElementLine(Graphics2D graphics, String line, int x, int baselineY, int color, BookTextBlock.Kind kind, float textAlpha, int lineIndex, float glitchStrength, float scale) {
+        java.awt.geom.AffineTransform originalTransform = graphics.getTransform();
+        graphics.translate(x, baselineY);
+        double renderScale = effectiveRenderScale(kind, scale);
+        graphics.scale(renderScale, renderScale);
+        if (TEXT_RENDER_MODE == ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING) {
+            arcaneTextRenderer.renderGraphicsLine(
+                    graphics,
+                    line,
+                    0,
+                    0,
+                    color,
+                    kind,
+                    textAlpha,
+                    ArcaneTextRenderer.lineSeed(line, kind, lineIndex),
+                    glitchStrength
+            );
+        } else {
+            graphics.setColor(new Color(color, true));
+            graphics.drawString(line, 0, 0);
+        }
+        graphics.setTransform(originalTransform);
+    }
+
+    private void renderScaledInteractiveTextElement(GuiGraphics graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
+        boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
+        int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
+        int support = applyAlpha(0xB0D7C89E, textAlpha);
+        renderScaledElementLine(graphics, element.text().getString(), element.x(), element.y(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
+        float renderScale = effectiveRenderScale(element.kind(), element.scale());
+        int logicalWidth = Math.max(1, Math.round(element.width() / renderScale));
+        int logicalHeight = Math.max(1, Math.round(element.height() / Math.max(0.1f, element.scale())));
+        if (titleLink) {
+            graphics.drawString(font, "\u2058", element.x() - Math.round(6 * renderScale), element.y(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+        }
+        if (hovered) {
+            renderScaledElementLine(graphics, element.text().getString(), element.x(), element.y(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
+            if (titleLink) {
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, element.y() - 6), support, false);
+            } else {
+                int underlineY = element.y() + Math.max(1, logicalHeight - 2);
+                int leftInset = Math.min(3, Math.max(1, logicalWidth / 8));
+                int underlineX0 = element.x() + Math.round(leftInset * renderScale);
+                int underlineX1 = element.x() + element.width() - Math.round(leftInset * renderScale);
+                if (underlineX1 > underlineX0) {
+                    graphics.fill(underlineX0, underlineY, underlineX1, underlineY + 1, applyAlpha(0xFF6C49CC, textAlpha));
+                }
+                if (underlineX1 - underlineX0 > 6) {
+                    graphics.fill(underlineX0 + 2, underlineY + 2, underlineX1 - 2, underlineY + 3, support);
+                }
+            }
+        }
+    }
+
+    private void renderScaledInteractiveTextElement(Graphics2D graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
+        boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
+        int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
+        int baselineY = element.y() + graphics.getFontMetrics().getAscent();
+        int support = applyAlpha(0xB0D7C89E, textAlpha);
+        renderScaledElementLine(graphics, element.text().getString(), element.x(), baselineY, defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
+        if (hovered) {
+            renderScaledElementLine(graphics, element.text().getString(), element.x(), baselineY, applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
+        }
+        if (titleLink) {
+            graphics.setColor(new Color(applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), true));
+            graphics.drawString("\u2058", element.x() - 6, baselineY);
+            graphics.drawString("\u2058", element.x() + element.width() + 2, baselineY);
+            if (hovered) {
+                graphics.setColor(new Color(support, true));
+                graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(graphics.getFontMetrics().getAscent(), baselineY - 6));
+            }
+        }
+    }
+
+    private float effectiveRenderScale(BookTextBlock.Kind kind, float scale) {
+        return (kind == BookTextBlock.Kind.LEVEL ? 2.0f : 1.0f) * Math.max(0.1f, scale);
     }
 
     private void renderLargeLevelLine(GuiGraphics graphics, String line, int x, int y, int width, int color) {

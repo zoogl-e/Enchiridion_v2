@@ -13,10 +13,6 @@ import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
 
 public final class BookScreen extends Screen {
-    private static final boolean SHOW_GUI_TEXT_DEBUG = false;
-    private static final boolean DEBUG_PAGE_LOCAL_INTERACTION = true;
-    private static final boolean DEBUG_HOVERED_INTERACTIVE_TEXT_BOUNDS = true;
-
     private final BookScreenController controller;
     private final BookSceneRenderer sceneRenderer = new BookSceneRenderer();
     private final PageCanvasRenderer pageRenderer = new PageCanvasRenderer();
@@ -79,7 +75,7 @@ public final class BookScreen extends Screen {
         BookInteractionResolver.Resolution interaction = resolveInteraction(mouseX, mouseY);
         renderBook(graphics, interaction, mouseX, mouseY, partialTick);
 
-        if (SHOW_GUI_TEXT_DEBUG) {
+        if (BookDebugSettings.showGuiTextDebug()) {
             renderGuiTextDebug(graphics);
         }
 
@@ -96,8 +92,8 @@ public final class BookScreen extends Screen {
                 interactionResolver,
                 mouseX,
                 mouseY,
-                DEBUG_PAGE_LOCAL_INTERACTION,
-                DEBUG_HOVERED_INTERACTIVE_TEXT_BOUNDS
+                BookDebugSettings.pageLocalInteractionDebug(),
+                BookDebugSettings.hoveredInteractiveBoundsDebug()
         );
         graphics.flush();
         RenderSystem.disableDepthTest();
@@ -214,7 +210,7 @@ public final class BookScreen extends Screen {
                 viewState.currentProjectionFocusOffset(),
                 mouseX,
                 mouseY,
-                DEBUG_PAGE_LOCAL_INTERACTION
+                BookDebugSettings.pageLocalInteractionDebug()
         );
         viewState.setInteraction(interaction);
         return interaction;

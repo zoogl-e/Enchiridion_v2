@@ -11,6 +11,7 @@ import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookTemplateDebugProvider;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 import net.zoogle.enchiridion.client.ui.BookLayout;
+import net.zoogle.enchiridion.client.ui.BookDebugSettings;
 import net.zoogle.enchiridion.client.ui.BookScreenController;
 import net.zoogle.enchiridion.client.ui.BookViewState;
 import org.lwjgl.glfw.GLFW;
@@ -45,7 +46,7 @@ public final class LevelRpgJournalTemplateEditor {
                 selection = null;
                 editing = null;
             } else {
-                debugVisible = JournalPageStyleSystem.debugTemplateLayoutEnabled();
+                debugVisible = BookDebugSettings.anyDebugEnabled();
             }
             return true;
         }
@@ -153,12 +154,12 @@ public final class LevelRpgJournalTemplateEditor {
         if (!enabled || viewState.layout() == null) {
             return;
         }
-        if (templateMode) {
+        if (templateMode && debugVisible) {
             drawForSide(graphics, font, controller, viewState, sceneRenderer, BookPageSide.LEFT);
             drawForSide(graphics, font, controller, viewState, sceneRenderer, BookPageSide.RIGHT);
         }
         drawControlStrip(graphics, font, screenHeight);
-        if (selection != null) {
+        if (selection != null && debugVisible) {
             JournalPageStyleSystem.TemplateSpec template = JournalPageStyleSystem.currentTemplate(selection.purpose(), selection.pageSide());
             JournalPageStyleSystem.SlotRegion region = template.slot(selection.slot()).region();
             graphics.drawString(font, selection.purpose() + " / " + selection.slot() + " [" + selection.pageSide() + "]", 8, screenHeight - 52, 0xFFE8F7FF, false);
@@ -335,7 +336,7 @@ public final class LevelRpgJournalTemplateEditor {
             }
             case DEBUG_UI -> {
                 debugVisible = !debugVisible;
-                JournalPageStyleSystem.setDebugTemplateLayoutEnabled(debugVisible);
+                BookDebugSettings.setAllDebugEnabled(debugVisible);
                 onChanged.run();
                 return true;
             }

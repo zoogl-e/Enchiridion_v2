@@ -107,7 +107,8 @@ final class JournalFlowLayout {
                         x,
                         lineY,
                         Math.max(1, Math.min(width, net.minecraft.client.Minecraft.getInstance().font.width(line))),
-                        JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY)
+                        JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY),
+                        1.0f
                 ));
             }
             lineY += JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY);
