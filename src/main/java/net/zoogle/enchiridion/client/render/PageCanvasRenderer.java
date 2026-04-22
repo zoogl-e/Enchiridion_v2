@@ -15,6 +15,7 @@ import java.awt.Graphics2D;
 import java.util.List;
 
 public final class PageCanvasRenderer {
+    private static final int ROW_TEXT_VISUAL_BIAS_Y = -1;
     public static final int PAGE_MARGIN_X = 10;
     public static final int PAGE_MARGIN_Y = 10;
     public static final int RIGHT_PAGE_INSET = 8;
@@ -716,7 +717,8 @@ public final class PageCanvasRenderer {
     }
 
     private int interactiveTextDrawY(BookPageElement.InteractiveTextElement element) {
-        return element.y() + Math.max(0, (element.height() - interactiveGlyphHeight(element.kind())) / 2);
+        int centeredY = element.y() + Math.max(0, (element.height() - interactiveGlyphHeight(element.kind())) / 2);
+        return Math.max(element.y(), centeredY + (element.kind() == BookTextBlock.Kind.SUBTITLE ? ROW_TEXT_VISUAL_BIAS_Y : 0));
     }
 
     private int interactiveGlyphHeight(BookTextBlock.Kind kind) {
