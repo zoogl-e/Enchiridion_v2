@@ -12,6 +12,9 @@ import net.zoogle.enchiridion.client.ui.BookDebugSettings;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.font.FontRenderContext;
+import java.awt.font.LineMetrics;
+import java.awt.geom.Rectangle2D;
 import java.util.List;
 
 public final class PageCanvasRenderer {
@@ -29,13 +32,19 @@ public final class PageCanvasRenderer {
     private static final int BUTTON_HORIZONTAL_PADDING = 8;
     private static final int BUTTON_VERTICAL_PADDING = 4;
     private static final int BUTTON_ACCENT_SPACING = 3;
+    private static final int INTERACTIVE_TEXT_HORIZONTAL_PADDING = 1;
+    private static final int INTERACTIVE_TEXT_TOP_PADDING = 1;
+    private static final int INTERACTIVE_TEXT_BOTTOM_PADDING = 2;
     private static final ArcaneTextRenderer.TextRenderMode TEXT_RENDER_MODE = ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING;
+    private static final java.awt.Font PAGE_TEXTURE_FONT = new java.awt.Font("Serif", java.awt.Font.PLAIN, 14);
+    private static final FontRenderContext PAGE_TEXT_FRC = new FontRenderContext(null, true, true);
 
     private final Font font = Minecraft.getInstance().font;
     private final ArcaneTextRenderer arcaneTextRenderer = new ArcaneTextRenderer();
 
     private record RenderResult(int y, boolean overflowed) {}
     public record RenderedTextGeometry(int drawX, int drawY, int width, int height, int baselineY) {}
+    private record InteractiveTextLayout(int originX, int originY, int baselineY, int textWidth, RenderedTextGeometry bounds) {}
     public void renderPage(GuiGraphics graphics, BookPage page, int x, int y, int width, int height) {
         renderPage(graphics, page, x, y, width, height, 1.0f, 0, null, 0.0f);
     }
@@ -289,20 +298,20 @@ public final class PageCanvasRenderer {
         }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        RenderedTextGeometry renderedGeometry = geometryForInteractiveTextElement(element);
-        RenderedTextGeometry interactionGeometry = inlineInteractionGeometryFor(element);
-        renderLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.drawY(), renderedGeometry.width(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
+        InteractiveTextLayout layout = layoutForInteractiveTextElement(element);
+        RenderedTextGeometry interactionGeometry = layout.bounds();
+        renderLine(graphics, element.text().getString(), layout.originX(), layout.originY(), layout.textWidth(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
         if (titleLink) {
             int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
-            graphics.drawString(font, "\u2058", renderedGeometry.drawX() - 6, renderedGeometry.drawY(), aura, false);
-            graphics.drawString(font, "\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.drawY(), aura, false);
+            graphics.drawString(font, "\u2058", layout.originX() - 6, layout.originY(), aura, false);
+            graphics.drawString(font, "\u2058", layout.originX() + layout.textWidth() + 2, layout.originY(), aura, false);
         }
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            renderLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.drawY(), renderedGeometry.width(), ink, element.kind(), textAlpha, 0, 0.0f);
+            renderLine(graphics, element.text().getString(), layout.originX(), layout.originY(), layout.textWidth(), ink, element.kind(), textAlpha, 0, 0.0f);
             if (titleLink) {
-                graphics.drawString(font, "\u2058", renderedGeometry.drawX() + Math.max(0, (renderedGeometry.width() / 2) - 2), Math.max(0, renderedGeometry.drawY() - 6), support, false);
+                graphics.drawString(font, "\u2058", layout.originX() + Math.max(0, (layout.textWidth() / 2) - 2), Math.max(0, layout.originY() - 6), support, false);
             } else {
                 int underlineY = interactionGeometry.drawY() + Math.max(1, interactionGeometry.height() - 2);
                 int leftInset = Math.min(3, Math.max(1, interactionGeometry.width() / 8));
@@ -315,8 +324,8 @@ public final class PageCanvasRenderer {
                 if (underlineX1 - underlineX0 > 6) {
                     graphics.fill(underlineX0 + 2, underlineY + 2, underlineX1 - 2, underlineY + 3, support);
                 }
-                graphics.drawString(font, "\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.drawY(), support, false);
-                graphics.drawString(font, "\u2058", interactionGeometry.drawX() + Math.max(0, (interactionGeometry.width() / 2) - 2), Math.max(renderedGeometry.drawY(), underlineY - 5), support, false);
+                graphics.drawString(font, "\u2058", layout.originX() + layout.textWidth() + 2, layout.originY(), support, false);
+                graphics.drawString(font, "\u2058", interactionGeometry.drawX() + Math.max(0, (interactionGeometry.width() / 2) - 2), Math.max(layout.originY(), underlineY - 5), support, false);
             }
         }
     }
@@ -367,23 +376,22 @@ public final class PageCanvasRenderer {
         }
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        int fontAscent = graphics.getFontMetrics().getAscent();
-        RenderedTextGeometry renderedGeometry = geometryForInteractiveTextElement(element, fontAscent);
-        RenderedTextGeometry interactionGeometry = inlineInteractionGeometryFor(element, fontAscent);
-        renderLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.baselineY(), renderedGeometry.width(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
+        InteractiveTextLayout layout = layoutForInteractiveTextElement(element);
+        RenderedTextGeometry interactionGeometry = layout.bounds();
+        renderLine(graphics, element.text().getString(), layout.originX(), layout.baselineY(), layout.textWidth(), defaultInk, element.kind(), textAlpha, 0, 0.0f);
         if (titleLink) {
             int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
             graphics.setColor(new Color(aura, true));
-            graphics.drawString("\u2058", renderedGeometry.drawX() - 6, renderedGeometry.baselineY());
-            graphics.drawString("\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.baselineY());
+            graphics.drawString("\u2058", layout.originX() - 6, layout.baselineY());
+            graphics.drawString("\u2058", layout.originX() + layout.textWidth() + 2, layout.baselineY());
         }
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            renderLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.baselineY(), renderedGeometry.width(), ink, element.kind(), textAlpha, 0, 0.0f);
+            renderLine(graphics, element.text().getString(), layout.originX(), layout.baselineY(), layout.textWidth(), ink, element.kind(), textAlpha, 0, 0.0f);
             if (titleLink) {
                 graphics.setColor(new Color(support, true));
-                graphics.drawString("\u2058", renderedGeometry.drawX() + Math.max(0, (renderedGeometry.width() / 2) - 2), Math.max(fontAscent, renderedGeometry.baselineY() - 6));
+                graphics.drawString("\u2058", layout.originX() + Math.max(0, (layout.textWidth() / 2) - 2), Math.max(interactionGeometry.baselineY() - 6, interactionGeometry.drawY()));
             } else {
                 int underlineY = interactionGeometry.drawY() + Math.max(1, interactionGeometry.height() - 2);
                 int leftInset = Math.min(3, Math.max(1, interactionGeometry.width() / 8));
@@ -398,8 +406,8 @@ public final class PageCanvasRenderer {
                     graphics.fillRect(underlineX0 + 2, underlineY + 2, Math.max(1, (underlineX1 - underlineX0) - 4), 1);
                 }
                 graphics.setColor(new Color(support, true));
-                graphics.drawString("\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.baselineY());
-                graphics.drawString("\u2058", interactionGeometry.drawX() + Math.max(0, (interactionGeometry.width() / 2) - 2), Math.max(interactionGeometry.drawY() + fontAscent - 3, underlineY - 2));
+                graphics.drawString("\u2058", layout.originX() + layout.textWidth() + 2, layout.baselineY());
+                graphics.drawString("\u2058", interactionGeometry.drawX() + Math.max(0, (interactionGeometry.width() / 2) - 2), Math.max(interactionGeometry.baselineY() - 3, underlineY - 2));
             }
         }
         if (BookDebugSettings.interactiveTextBoundsDebug()) {
@@ -669,17 +677,17 @@ public final class PageCanvasRenderer {
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         int support = applyAlpha(0xB0D7C89E, textAlpha);
-        RenderedTextGeometry renderedGeometry = geometryForInteractiveTextElement(element);
-        RenderedTextGeometry interactionGeometry = inlineInteractionGeometryFor(element);
-        renderScaledElementLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.drawY(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
+        InteractiveTextLayout layout = layoutForInteractiveTextElement(element);
+        RenderedTextGeometry interactionGeometry = layout.bounds();
+        renderScaledElementLine(graphics, element.text().getString(), layout.originX(), layout.originY(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
         if (titleLink) {
-            graphics.drawString(font, "\u2058", renderedGeometry.drawX() - 6, renderedGeometry.drawY(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
-            graphics.drawString(font, "\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.drawY(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+            graphics.drawString(font, "\u2058", layout.originX() - 6, layout.originY(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
+            graphics.drawString(font, "\u2058", layout.originX() + layout.textWidth() + 2, layout.originY(), applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), false);
         }
         if (hovered) {
-            renderScaledElementLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.drawY(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
+            renderScaledElementLine(graphics, element.text().getString(), layout.originX(), layout.originY(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
             if (titleLink) {
-                graphics.drawString(font, "\u2058", renderedGeometry.drawX() + Math.max(0, (renderedGeometry.width() / 2) - 2), Math.max(0, renderedGeometry.drawY() - 6), support, false);
+                graphics.drawString(font, "\u2058", layout.originX() + Math.max(0, (layout.textWidth() / 2) - 2), Math.max(0, layout.originY() - 6), support, false);
             } else {
                 int underlineY = interactionGeometry.drawY() + Math.max(1, interactionGeometry.height() - 2);
                 int leftInset = Math.min(3, Math.max(1, interactionGeometry.width() / 8));
@@ -698,21 +706,20 @@ public final class PageCanvasRenderer {
     private void renderScaledInteractiveTextElement(Graphics2D graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
         boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
         int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
-        int fontAscent = graphics.getFontMetrics().getAscent();
-        RenderedTextGeometry renderedGeometry = geometryForInteractiveTextElement(element, fontAscent);
-        RenderedTextGeometry interactionGeometry = inlineInteractionGeometryFor(element, fontAscent);
+        InteractiveTextLayout layout = layoutForInteractiveTextElement(element);
+        RenderedTextGeometry interactionGeometry = layout.bounds();
         int support = applyAlpha(0xB0D7C89E, textAlpha);
-        renderScaledElementLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.baselineY(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
+        renderScaledElementLine(graphics, element.text().getString(), layout.originX(), layout.baselineY(), defaultInk, element.kind(), textAlpha, 0, 0.0f, element.scale());
         if (hovered) {
-            renderScaledElementLine(graphics, element.text().getString(), renderedGeometry.drawX(), renderedGeometry.baselineY(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
+            renderScaledElementLine(graphics, element.text().getString(), layout.originX(), layout.baselineY(), applyAlpha(0xFF6C49CC, textAlpha), element.kind(), textAlpha, 0, 0.0f, element.scale());
         }
         if (titleLink) {
             graphics.setColor(new Color(applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha), true));
-            graphics.drawString("\u2058", renderedGeometry.drawX() - 6, renderedGeometry.baselineY());
-            graphics.drawString("\u2058", renderedGeometry.drawX() + renderedGeometry.width() + 2, renderedGeometry.baselineY());
+            graphics.drawString("\u2058", layout.originX() - 6, layout.baselineY());
+            graphics.drawString("\u2058", layout.originX() + layout.textWidth() + 2, layout.baselineY());
             if (hovered) {
                 graphics.setColor(new Color(support, true));
-                graphics.drawString("\u2058", renderedGeometry.drawX() + Math.max(0, (renderedGeometry.width() / 2) - 2), Math.max(fontAscent, renderedGeometry.baselineY() - 6));
+                graphics.drawString("\u2058", layout.originX() + Math.max(0, (layout.textWidth() / 2) - 2), Math.max(interactionGeometry.drawY(), layout.baselineY() - 6));
             }
         } else if (hovered) {
             int underlineY = interactionGeometry.drawY() + Math.max(1, interactionGeometry.height() - 2);
@@ -751,43 +758,62 @@ public final class PageCanvasRenderer {
     }
 
     public static RenderedTextGeometry geometryForInteractiveTextElement(BookPageElement.InteractiveTextElement element) {
-        return geometryForInteractiveTextElement(element, Minecraft.getInstance().font.lineHeight);
+        return layoutForInteractiveTextElement(element).bounds();
     }
 
     public static RenderedTextGeometry inlineInteractionGeometryFor(BookPageElement.InteractiveTextElement element) {
-        return inlineInteractionGeometryFor(element, Minecraft.getInstance().font.lineHeight);
+        return geometryForInteractiveTextElement(element);
     }
 
     public static RenderedTextGeometry inlineInteractionGeometryFor(BookPageElement.InteractiveTextElement element, int fontAscent) {
-        RenderedTextGeometry rendered = geometryForInteractiveTextElement(element, fontAscent);
-        int topInset = rendered.height() > 5 ? 1 : 0;
-        int bottomInset = rendered.height() > 6 ? 2 : Math.min(1, Math.max(0, rendered.height() - 1));
-        int adjustedY = rendered.drawY() + topInset;
-        int adjustedHeight = Math.max(1, rendered.height() - topInset - bottomInset);
-        return new RenderedTextGeometry(
-                rendered.drawX(),
-                adjustedY,
-                rendered.width(),
-                adjustedHeight,
-                adjustedY + (rendered.baselineY() - rendered.drawY())
-        );
+        return layoutForInteractiveTextElement(element).bounds();
     }
 
     public static RenderedTextGeometry geometryForInteractiveTextElement(BookPageElement.InteractiveTextElement element, int fontAscent) {
+        return layoutForInteractiveTextElement(element).bounds();
+    }
+
+    private static InteractiveTextLayout layoutForInteractiveTextElement(BookPageElement.InteractiveTextElement element) {
         String text = element.text().getString();
         float renderScale = effectiveRenderScale(element.kind(), element.scale());
-        int drawX = Math.abs(element.scale() - 1.0f) > 0.001f
+        java.awt.Font awtFont = renderScale == 1.0f
+                ? PAGE_TEXTURE_FONT
+                : PAGE_TEXTURE_FONT.deriveFont(PAGE_TEXTURE_FONT.getSize2D() * renderScale);
+        Rectangle2D stringBounds = awtFont.getStringBounds(text, PAGE_TEXT_FRC);
+        LineMetrics lineMetrics = awtFont.getLineMetrics(text, PAGE_TEXT_FRC);
+        int textWidth = Math.max(1, (int) Math.ceil(stringBounds.getWidth()));
+        int originX = Math.abs(element.scale() - 1.0f) > 0.001f
                 ? element.x()
-                : alignedX(text, element.x(), element.width(), element.kind(), Minecraft.getInstance().font::width);
-        int glyphHeight = scaledGlyphHeight(element.kind(), renderScale);
-        int centeredY = element.y() + Math.max(0, (element.height() - glyphHeight) / 2);
-        int drawY = Math.max(element.y(), centeredY + (element.kind() == BookTextBlock.Kind.SUBTITLE ? ROW_TEXT_VISUAL_BIAS_Y : 0));
-        int width = Math.max(1, Math.round(Minecraft.getInstance().font.width(text) * renderScale));
-        return new RenderedTextGeometry(drawX, drawY, width, glyphHeight, drawY + fontAscent);
+                : alignedX(textWidth, element.x(), element.width(), element.kind());
+        int ascent = Math.max(1, (int) Math.ceil(lineMetrics.getAscent()));
+        int descent = Math.max(1, (int) Math.ceil(lineMetrics.getDescent()));
+        int visibleHeight = ascent + descent;
+        int paddedHeight = visibleHeight + INTERACTIVE_TEXT_TOP_PADDING + INTERACTIVE_TEXT_BOTTOM_PADDING;
+        int boundsY = Math.max(
+                element.y(),
+                element.y() + Math.max(0, (element.height() - paddedHeight) / 2) + (element.kind() == BookTextBlock.Kind.SUBTITLE ? ROW_TEXT_VISUAL_BIAS_Y : 0)
+        );
+        int originY = boundsY + INTERACTIVE_TEXT_TOP_PADDING;
+        int baselineY = originY + ascent;
+        RenderedTextGeometry bounds = new RenderedTextGeometry(
+                Math.max(0, originX - INTERACTIVE_TEXT_HORIZONTAL_PADDING),
+                boundsY,
+                textWidth + (INTERACTIVE_TEXT_HORIZONTAL_PADDING * 2),
+                paddedHeight,
+                baselineY
+        );
+        return new InteractiveTextLayout(originX, originY, baselineY, textWidth, bounds);
     }
 
     private static int scaledGlyphHeight(BookTextBlock.Kind kind, float renderScale) {
         return Math.max(1, Math.round((lineHeightFor(kind) - LINE_SPACING) * renderScale));
+    }
+
+    private static int alignedX(int textWidth, int x, int width, BookTextBlock.Kind kind) {
+        if (kind == BookTextBlock.Kind.TITLE) {
+            return x + Math.max(0, (width - textWidth) / 2);
+        }
+        return x;
     }
 
     private void renderLargeLevelLine(GuiGraphics graphics, String line, int x, int y, int width, int color) {
