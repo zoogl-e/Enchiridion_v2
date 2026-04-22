@@ -87,49 +87,14 @@ final class BookInteractionResolver {
         List<PageInteractiveNode> resolved = new ArrayList<>();
         for (BookPageElement.InteractiveElement interactiveElement : pageInteractiveElements(displayedSpread)) {
             BookPageSide pageSide = pageSideFor(displayedSpread, interactiveElement);
-            switch (interactiveElement) {
-                case BookPageElement.InteractiveTextElement text -> {
-                    PageCanvasRenderer.RenderedTextGeometry geometry = PageCanvasRenderer.inlineInteractionGeometryFor(text);
-                    resolved.add(buildNode(
-                            controller,
-                            sceneRenderer,
-                            layout,
-                            projectionFocusOffset,
-                            text.stableId(),
-                            pageSide,
-                            geometry.drawX(),
-                            geometry.drawY(),
-                            geometry.width(),
-                            geometry.height(),
-                            text.text(),
-                            text.tooltip(),
-                            text.action(),
-                            text.enabled(),
-                            visualTypeFor(text),
-                            text,
-                            null
-                    ));
-                }
-                case BookPageElement.ButtonElement button -> resolved.add(buildNode(
-                        controller,
-                        sceneRenderer,
-                        layout,
-                        projectionFocusOffset,
-                        button.stableId(),
-                        pageSide,
-                        button.x(),
-                        button.y(),
-                        button.width(),
-                        button.height(),
-                        button.label(),
-                        button.tooltip(),
-                        button.action(),
-                        button.enabled(),
-                        visualTypeFor(button),
-                        button,
-                        null
-                ));
-            }
+            resolved.add(buildInteractiveElementNode(
+                    controller,
+                    sceneRenderer,
+                    layout,
+                    projectionFocusOffset,
+                    pageSide,
+                    interactiveElement
+            ));
         }
         for (BookInteractiveRegion region : controller.definition().provider().interactiveRegions(controller.context(), displayedSpreadIndex)) {
             resolved.add(buildNode(
@@ -213,6 +178,59 @@ final class BookInteractionResolver {
                 interactiveElement,
                 region
         );
+    }
+
+    private PageInteractiveNode buildInteractiveElementNode(
+            BookScreenController controller,
+            BookSceneRenderer sceneRenderer,
+            BookLayout layout,
+            float projectionFocusOffset,
+            BookPageSide pageSide,
+            BookPageElement.InteractiveElement interactiveElement
+    ) {
+        return switch (interactiveElement) {
+            case BookPageElement.InteractiveTextElement text -> {
+                PageCanvasRenderer.RenderedTextGeometry geometry = PageCanvasRenderer.inlineInteractionGeometryFor(text);
+                yield buildNode(
+                        controller,
+                        sceneRenderer,
+                        layout,
+                        projectionFocusOffset,
+                        text.stableId(),
+                        pageSide,
+                        geometry.drawX(),
+                        geometry.drawY(),
+                        geometry.width(),
+                        geometry.height(),
+                        text.text(),
+                        text.tooltip(),
+                        text.action(),
+                        text.enabled(),
+                        visualTypeFor(text),
+                        text,
+                        null
+                );
+            }
+            case BookPageElement.ButtonElement button -> buildNode(
+                    controller,
+                    sceneRenderer,
+                    layout,
+                    projectionFocusOffset,
+                    button.stableId(),
+                    pageSide,
+                    button.x(),
+                    button.y(),
+                    button.width(),
+                    button.height(),
+                    button.label(),
+                    button.tooltip(),
+                    button.action(),
+                    button.enabled(),
+                    visualTypeFor(button),
+                    button,
+                    null
+            );
+        };
     }
 
     private PageInteractiveNode resolveHoveredTarget(
