@@ -124,9 +124,9 @@ public final class BookSceneRenderer {
                 bounds.localHeight()
         );
         if (point != null) {
-            return point;
+            return withAuthoredLocalX(point);
         }
-        return resolvePointInTriangle(
+        return withAuthoredLocalX(resolvePointInTriangle(
                 bounds,
                 mousePoint,
                 bounds.topLeft(),
@@ -138,7 +138,7 @@ public final class BookSceneRenderer {
                 bounds.localHeight(),
                 0.0f,
                 bounds.localHeight()
-        );
+        ));
     }
 
     public ScreenRect projectPageRect(
@@ -387,9 +387,10 @@ public final class BookSceneRenderer {
             float localX,
             float localY
     ) {
+        float projectedLocalX = projectedLocalX(pageSide, localX, BookPageTexturePipeline.renderRegionSize(pageSide).width());
         PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, currentInspectYaw);
         PageSurfaceMapping surface = pageSurfaceMapping(pageSide);
-        Vector3f point = surface.modelPointForLocal(localX, localY);
+        Vector3f point = surface.modelPointForLocal(projectedLocalX, localY);
         point.mul(presentation.scaleX(), presentation.scaleY(), presentation.scaleZ());
         point.rotateX((float) Math.toRadians(MODEL_X_ROTATION));
         point.rotateY((float) Math.toRadians(presentation.presentationYaw()));
@@ -467,7 +468,8 @@ public final class BookSceneRenderer {
     }
 
     private ScreenPoint projectPagePoint(PageSurfaceBounds bounds, float localX, float localY) {
-        float u = bounds.localWidth() <= 0.0f ? 0.0f : clamp(localX / bounds.localWidth(), 0.0f, 1.0f);
+        float projectedLocalX = projectedLocalX(bounds.pageSide(), localX, bounds.localWidth());
+        float u = bounds.localWidth() <= 0.0f ? 0.0f : clamp(projectedLocalX / bounds.localWidth(), 0.0f, 1.0f);
         float v = bounds.localHeight() <= 0.0f ? 0.0f : clamp(localY / bounds.localHeight(), 0.0f, 1.0f);
         float topX = lerp(bounds.topLeft().x(), bounds.topRight().x(), u);
         float topY = lerp(bounds.topLeft().y(), bounds.topRight().y(), u);
@@ -496,6 +498,24 @@ public final class BookSceneRenderer {
         float localX = (barycentric.alpha() * localAX) + (barycentric.beta() * localBX) + (barycentric.gamma() * localCX);
         float localY = (barycentric.alpha() * localAY) + (barycentric.beta() * localBY) + (barycentric.gamma() * localCY);
         return new PageLocalPoint(bounds, localX, localY);
+    }
+
+    private PageLocalPoint withAuthoredLocalX(PageLocalPoint point) {
+        if (point == null) {
+            return null;
+        }
+        float authoredLocalX = authoredLocalX(point.bounds().pageSide(), point.localX(), point.bounds().localWidth());
+        return new PageLocalPoint(point.bounds(), authoredLocalX, point.localY());
+    }
+
+    private static float projectedLocalX(BookPageSide pageSide, float localX, float localWidth) {
+        return pageSide == BookPageSide.LEFT
+                ? Math.max(0.0f, localWidth - localX)
+                : localX;
+    }
+
+    private static float authoredLocalX(BookPageSide pageSide, float localX, float localWidth) {
+        return projectedLocalX(pageSide, localX, localWidth);
     }
 
     private static Barycentric barycentric(ScreenPoint p, ScreenPoint a, ScreenPoint b, ScreenPoint c) {
