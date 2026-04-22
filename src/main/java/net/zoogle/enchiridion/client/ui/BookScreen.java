@@ -1,11 +1,14 @@
 package net.zoogle.enchiridion.client.ui;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookPageSide;
+import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalTemplateEditor;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
 
@@ -21,6 +24,7 @@ public final class BookScreen extends Screen {
     private final BookViewState viewState = new BookViewState();
     private final BookInputController inputController = new BookInputController();
     private final BookOverlayRenderer overlayRenderer = new BookOverlayRenderer();
+    private final LevelRpgJournalTemplateEditor templateEditor = new LevelRpgJournalTemplateEditor();
 
     public BookScreen(BookDefinition definition) {
         this(definition, createContext(definition));
@@ -95,11 +99,41 @@ public final class BookScreen extends Screen {
                 DEBUG_PAGE_LOCAL_INTERACTION,
                 DEBUG_HOVERED_INTERACTIVE_TEXT_BOUNDS
         );
+        graphics.flush();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 700.0F);
+        try {
+            templateEditor.renderOverlay(graphics, font, controller, viewState, sceneRenderer, height);
+        } finally {
+            graphics.flush();
+            graphics.pose().popPose();
+            RenderSystem.depthMask(true);
+            RenderSystem.enableDepthTest();
+        }
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (templateEditor.keyPressed(keyCode, modifiers, controller, viewState, () -> {
+            controller.reloadSpread();
+            viewState.refreshDisplayedSpread(controller);
+        })) {
+            return true;
+        }
         return inputController.keyPressed(controller, viewState, keyCode, () -> super.keyPressed(keyCode, scanCode, modifiers), super::onClose);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (templateEditor.charTyped(codePoint, controller, viewState, () -> {
+            controller.reloadSpread();
+            viewState.refreshDisplayedSpread(controller);
+        })) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     @Override
@@ -113,6 +147,9 @@ public final class BookScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (templateEditor.mouseClicked(controller, viewState, sceneRenderer, mouseX, mouseY, button)) {
+            return true;
+        }
         if (inputController.mouseClicked(controller, viewState, viewState.layout(), sceneRenderer, mouseX, mouseY, button)) {
             return true;
         }
@@ -121,12 +158,22 @@ public final class BookScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (templateEditor.mouseDragged(controller, viewState, sceneRenderer, mouseX, mouseY)) {
+            controller.reloadSpread();
+            viewState.refreshDisplayedSpread(controller);
+            return true;
+        }
         return inputController.mouseDragged(controller, viewState, button, mouseX, mouseY)
                 || super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (templateEditor.mouseReleased(button)) {
+            controller.reloadSpread();
+            viewState.refreshDisplayedSpread(controller);
+            return true;
+        }
         return inputController.mouseReleased(viewState, button)
                 || super.mouseReleased(mouseX, mouseY, button);
     }
@@ -184,8 +231,10 @@ public final class BookScreen extends Screen {
                 controller.projectionProgress(),
                 viewState.currentProjectionFocusOffset(),
                 viewState.focusedProjectionPageSide(controller),
-                interactionResolver.hoveredInteractiveElement(interaction, viewState.displayedSpread(), BookPageSide.LEFT),
-                interactionResolver.hoveredInteractiveElement(interaction, viewState.displayedSpread(), BookPageSide.RIGHT),
+                interactionResolver.pageNodesFor(interaction, BookPageSide.LEFT),
+                interactionResolver.pageNodesFor(interaction, BookPageSide.RIGHT),
+                interactionResolver.hoveredInteractiveNode(interaction, BookPageSide.LEFT),
+                interactionResolver.hoveredInteractiveNode(interaction, BookPageSide.RIGHT),
                 mouseX,
                 mouseY,
                 viewState.textAlpha(),

@@ -7,6 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookTextBlock;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -24,6 +25,9 @@ public final class PageCanvasRenderer {
     public static final int BODY_LINE_HEIGHT = 9;
     public static final int SECTION_LINE_HEIGHT = 10;
     public static final int BLOCK_SPACING = 6;
+    private static final int BUTTON_HORIZONTAL_PADDING = 8;
+    private static final int BUTTON_VERTICAL_PADDING = 4;
+    private static final int BUTTON_ACCENT_SPACING = 3;
     private static final ArcaneTextRenderer.TextRenderMode TEXT_RENDER_MODE = ArcaneTextRenderer.TextRenderMode.ENCHANTED_TRANSLATING;
 
     private final Font font = Minecraft.getInstance().font;
@@ -121,7 +125,7 @@ public final class PageCanvasRenderer {
     }
 
     public void renderPageTextOnlyToGraphics2D(Graphics2D graphics, BookPage page, int x, int y, int width, int height, float textAlpha, int horizontalInset, Integer pageNumber, float glitchStrength) {
-        renderPageTextOnlyToGraphics2D(graphics, page, x, y, width, height, textAlpha, horizontalInset, pageNumber, glitchStrength, null);
+        renderPageTextOnlyToGraphics2D(graphics, page, x, y, width, height, textAlpha, horizontalInset, pageNumber, glitchStrength, null, null);
     }
 
     public void renderPageTextOnlyToGraphics2D(
@@ -135,7 +139,8 @@ public final class PageCanvasRenderer {
             int horizontalInset,
             Integer pageNumber,
             float glitchStrength,
-            BookPageElement.InteractiveElement hoveredInteractiveElement
+            List<PageInteractiveNode> interactiveNodes,
+            PageInteractiveNode hoveredInteractiveNode
     ) {
         PageContentMetrics.ContentRect contentRect = PageContentMetrics.forInset(horizontalInset);
         int contentX = x + contentRect.contentX();
@@ -158,38 +163,39 @@ public final class PageCanvasRenderer {
                 break;
             }
         }
-        renderPageElementsToGraphics2D(graphics, page.elements(), textAlpha, hoveredInteractiveElement);
+        renderPageElementsToGraphics2D(graphics, page.elements(), textAlpha, hoveredInteractiveNode);
+        renderRuntimeInteractiveNodesToGraphics2D(graphics, interactiveNodes, textAlpha, hoveredInteractiveNode);
         drawPageNumber(graphics, x, y, width, height, page, textAlpha, pageNumber);
     }
 
-    private void renderPageElements(GuiGraphics graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
+    private void renderPageElements(GuiGraphics graphics, List<BookPageElement> elements, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         if (elements == null || elements.isEmpty()) {
             return;
         }
         for (BookPageElement element : elements) {
-            renderPageElement(graphics, element, textAlpha, hoveredInteractiveElement);
+            renderPageElement(graphics, element, textAlpha, hoveredInteractiveNode);
         }
     }
 
-    private void renderPageElementsToGraphics2D(Graphics2D graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
+    private void renderPageElementsToGraphics2D(Graphics2D graphics, List<BookPageElement> elements, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         if (elements == null || elements.isEmpty()) {
             return;
         }
         for (BookPageElement element : elements) {
-            renderPageElementToGraphics2D(graphics, element, textAlpha, hoveredInteractiveElement);
+            renderPageElementToGraphics2D(graphics, element, textAlpha, hoveredInteractiveNode);
         }
     }
 
-    private void renderPageElement(GuiGraphics graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
+    private void renderPageElement(GuiGraphics graphics, BookPageElement element, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         switch (element) {
             case BookPageElement.TextElement text ->
                     renderLine(graphics, text.text().getString(), text.x(), text.y(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.DecorationElement decoration ->
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
-                    renderInteractiveTextElement(graphics, interactive, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(interactive));
+                    renderInteractiveTextElement(graphics, interactive, textAlpha, isHovered(interactive, hoveredInteractiveNode));
             case BookPageElement.ButtonElement button ->
-                    renderButtonElement(graphics, button, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(button));
+                    renderButtonElement(graphics, button, textAlpha, isHovered(button, hoveredInteractiveNode));
             case BookPageElement.BoxElement box -> renderBox(graphics, box, textAlpha);
             case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
@@ -199,16 +205,16 @@ public final class PageCanvasRenderer {
         }
     }
 
-    private void renderPageElementToGraphics2D(Graphics2D graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
+    private void renderPageElementToGraphics2D(Graphics2D graphics, BookPageElement element, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
         switch (element) {
             case BookPageElement.TextElement text ->
                     renderLine(graphics, text.text().getString(), text.x(), text.y() + graphics.getFontMetrics().getAscent(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.DecorationElement decoration ->
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y() + graphics.getFontMetrics().getAscent(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
-                    renderInteractiveTextElementToGraphics2D(graphics, interactive, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(interactive));
+                    renderInteractiveTextElementToGraphics2D(graphics, interactive, textAlpha, isHovered(interactive, hoveredInteractiveNode));
             case BookPageElement.ButtonElement button ->
-                    renderButtonElementToGraphics2D(graphics, button, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(button));
+                    renderButtonElementToGraphics2D(graphics, button, textAlpha, isHovered(button, hoveredInteractiveNode));
             case BookPageElement.BoxElement box -> renderBox(graphics, box, textAlpha);
             case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
@@ -216,6 +222,61 @@ public final class PageCanvasRenderer {
             case BookPageElement.WidgetElement widget ->
                     renderLine(graphics, widget.label().getString(), widget.x(), widget.y() + graphics.getFontMetrics().getAscent(), widget.width(), applyAlpha(0xFF5A3F29, textAlpha), BookTextBlock.Kind.BODY, textAlpha, 0, 0.0f);
         }
+    }
+
+    private void renderRuntimeInteractiveNodesToGraphics2D(Graphics2D graphics, List<PageInteractiveNode> nodes, float textAlpha, PageInteractiveNode hoveredInteractiveNode) {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        for (PageInteractiveNode node : nodes) {
+            if (!node.isPageNativeVisible() || node.interactiveElement() != null || node.label() == null) {
+                continue;
+            }
+            boolean hovered = hoveredInteractiveNode != null && hoveredInteractiveNode.stableId().equals(node.stableId());
+            switch (node.visualType()) {
+                case INLINE_LINK -> renderRuntimeInlineLinkToGraphics2D(graphics, node, textAlpha, hovered);
+                case BUTTON -> renderRuntimeButtonToGraphics2D(graphics, node, textAlpha, hovered);
+                case HOTSPOT -> {
+                }
+            }
+        }
+    }
+
+    private void renderRuntimeInlineLinkToGraphics2D(Graphics2D graphics, PageInteractiveNode node, float textAlpha, boolean hovered) {
+        BookPageElement.InteractiveTextElement textElement = new BookPageElement.InteractiveTextElement(
+                node.stableId(),
+                BookTextBlock.Kind.SUBTITLE,
+                node.label(),
+                node.localX(),
+                node.localY(),
+                node.localWidth(),
+                node.localHeight(),
+                node.tooltip(),
+                node.action(),
+                BookPageElement.InteractiveVisualStyle.MANUSCRIPT_LINK,
+                node.enabled()
+        );
+        renderInteractiveTextElementToGraphics2D(graphics, textElement, textAlpha, hovered);
+    }
+
+    private void renderRuntimeButtonToGraphics2D(Graphics2D graphics, PageInteractiveNode node, float textAlpha, boolean hovered) {
+        BookPageElement.ButtonElement buttonElement = new BookPageElement.ButtonElement(
+                node.stableId(),
+                node.label(),
+                node.localX(),
+                node.localY(),
+                node.localWidth(),
+                node.localHeight(),
+                node.tooltip(),
+                node.action(),
+                BookPageElement.InteractiveVisualStyle.BUTTON,
+                node.enabled()
+        );
+        renderButtonElementToGraphics2D(graphics, buttonElement, textAlpha, hovered);
+    }
+
+    private static boolean isHovered(BookPageElement.InteractiveElement element, PageInteractiveNode hoveredInteractiveNode) {
+        return hoveredInteractiveNode != null && hoveredInteractiveNode.stableId().equals(element.stableId());
     }
 
     private void renderInteractiveTextElement(GuiGraphics graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
@@ -257,8 +318,16 @@ public final class PageCanvasRenderer {
         int inner = applyAlpha(hovered ? 0x28FFF3D0 : 0x18120F0A, textAlpha);
         int accentColor = applyAlpha(hovered ? 0xFFE8DBB8 : 0xBDAF8A63, textAlpha);
         int labelColor = applyAlpha(hovered ? 0xFFFFF5D8 : 0xFFE8D6B7, textAlpha);
+        int topHighlight = applyAlpha(hovered ? 0x66FFF3D5 : 0x33F1E2BF, textAlpha);
+        int bottomShadow = applyAlpha(hovered ? 0x22000000 : 0x16000000, textAlpha);
         graphics.fill(element.x(), element.y(), element.x() + element.width(), element.y() + element.height(), fill);
         graphics.fill(element.x() + 1, element.y() + 1, element.x() + element.width() - 1, element.y() + element.height() - 1, inner);
+        if (element.width() > 6) {
+            graphics.fill(element.x() + 3, element.y() + 2, element.x() + element.width() - 3, element.y() + 3, topHighlight);
+        }
+        if (element.width() > 6 && element.height() > 4) {
+            graphics.fill(element.x() + 2, element.y() + element.height() - 3, element.x() + element.width() - 2, element.y() + element.height() - 2, bottomShadow);
+        }
         graphics.fill(element.x(), element.y(), element.x() + element.width(), element.y() + 1, border);
         graphics.fill(element.x(), element.y() + element.height() - 1, element.x() + element.width(), element.y() + element.height(), border);
         graphics.fill(element.x(), element.y(), element.x() + 1, element.y() + element.height(), border);
@@ -266,10 +335,11 @@ public final class PageCanvasRenderer {
         String accent = "\u2058";
         int accentWidth = font.width(accent);
         int textWidth = font.width(element.label());
-        int spacing = 3;
+        int spacing = BUTTON_ACCENT_SPACING;
         int clusterWidth = textWidth + (accentWidth * 2) + (spacing * 2);
-        boolean drawAccents = clusterWidth + 4 <= element.width();
-        int textY = element.y() + Math.max(0, (element.height() - font.lineHeight) / 2);
+        int availableWidth = Math.max(0, element.width() - (BUTTON_HORIZONTAL_PADDING * 2));
+        boolean drawAccents = clusterWidth <= availableWidth;
+        int textY = element.y() + Math.max(BUTTON_VERTICAL_PADDING / 2, (element.height() - font.lineHeight) / 2);
         if (drawAccents) {
             int clusterX = element.x() + Math.max(0, (element.width() - clusterWidth) / 2);
             graphics.drawString(font, accent, clusterX, textY, accentColor, false);
@@ -331,20 +401,33 @@ public final class PageCanvasRenderer {
         int inner = applyAlpha(hovered ? 0x28FFF3D0 : 0x18120F0A, textAlpha);
         int accentColor = applyAlpha(hovered ? 0xFFE8DBB8 : 0xBDAF8A63, textAlpha);
         int labelColor = applyAlpha(hovered ? 0xFFFFF5D8 : 0xFFE8D6B7, textAlpha);
+        int topHighlight = applyAlpha(hovered ? 0x66FFF3D5 : 0x33F1E2BF, textAlpha);
+        int bottomShadow = applyAlpha(hovered ? 0x22000000 : 0x16000000, textAlpha);
         graphics.setColor(new Color(fill, true));
         graphics.fillRect(element.x(), element.y(), element.width(), element.height());
         graphics.setColor(new Color(inner, true));
         graphics.fillRect(element.x() + 1, element.y() + 1, Math.max(1, element.width() - 2), Math.max(1, element.height() - 2));
+        if (element.width() > 6) {
+            graphics.setColor(new Color(topHighlight, true));
+            graphics.fillRect(element.x() + 3, element.y() + 2, Math.max(1, element.width() - 6), 1);
+        }
+        if (element.width() > 6 && element.height() > 4) {
+            graphics.setColor(new Color(bottomShadow, true));
+            graphics.fillRect(element.x() + 2, element.y() + element.height() - 3, Math.max(1, element.width() - 4), 1);
+        }
         graphics.setColor(new Color(border, true));
         graphics.drawRect(element.x(), element.y(), Math.max(1, element.width() - 1), Math.max(1, element.height() - 1));
         java.awt.FontMetrics metrics = graphics.getFontMetrics();
-        int baselineY = element.y() + ((element.height() - metrics.getHeight()) / 2) + metrics.getAscent();
+        int contentTop = element.y() + Math.max(1, BUTTON_VERTICAL_PADDING / 2);
+        int contentHeight = Math.max(1, element.height() - Math.max(2, BUTTON_VERTICAL_PADDING));
+        int baselineY = contentTop + ((contentHeight - metrics.getHeight()) / 2) + metrics.getAscent();
         String accent = "\u2058";
         int accentWidth = metrics.stringWidth(accent);
         int textWidth = metrics.stringWidth(element.label().getString());
-        int spacing = 3;
+        int spacing = BUTTON_ACCENT_SPACING;
         int clusterWidth = textWidth + (accentWidth * 2) + (spacing * 2);
-        boolean drawAccents = clusterWidth + 4 <= element.width();
+        int availableWidth = Math.max(0, element.width() - (BUTTON_HORIZONTAL_PADDING * 2));
+        boolean drawAccents = clusterWidth <= availableWidth;
         if (drawAccents) {
             int clusterX = element.x() + Math.max(0, (element.width() - clusterWidth) / 2);
             graphics.setColor(new Color(accentColor, true));
@@ -366,18 +449,22 @@ public final class PageCanvasRenderer {
         int inset = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x30FFF1D4 : 0x22FFF6E3, textAlpha);
         int topGlow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x7AD8BC84 : 0x4CCBAE74, textAlpha);
         int shadow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x18000000 : 0x10000000, textAlpha);
-        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + box.height(), fill);
-        if (box.width() > 2 && box.height() > 2) {
+        if (((fill >>> 24) & 0xFF) > 0) {
+            graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + box.height(), fill);
+        }
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 2 && box.height() > 2) {
             graphics.fill(box.x() + 1, box.y() + 1, box.x() + box.width() - 1, box.y() + box.height() - 1, inset);
         }
-        if (box.width() > 4 && box.height() > 4) {
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 4 && box.height() > 4) {
             graphics.fill(box.x() + 2, box.y() + box.height() - 3, box.x() + box.width() - 2, box.y() + box.height() - 2, shadow);
         }
-        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + 1, border);
-        graphics.fill(box.x(), box.y() + box.height() - 1, box.x() + box.width(), box.y() + box.height(), border);
-        graphics.fill(box.x(), box.y(), box.x() + 1, box.y() + box.height(), border);
-        graphics.fill(box.x() + box.width() - 1, box.y(), box.x() + box.width(), box.y() + box.height(), border);
-        if (box.width() > 8) {
+        if (((border >>> 24) & 0xFF) > 0) {
+            graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + 1, border);
+            graphics.fill(box.x(), box.y() + box.height() - 1, box.x() + box.width(), box.y() + box.height(), border);
+            graphics.fill(box.x(), box.y(), box.x() + 1, box.y() + box.height(), border);
+            graphics.fill(box.x() + box.width() - 1, box.y(), box.x() + box.width(), box.y() + box.height(), border);
+        }
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 8) {
             graphics.fill(box.x() + 3, box.y() + 2, box.x() + box.width() - 3, box.y() + 3, topGlow);
         }
     }
@@ -388,19 +475,23 @@ public final class PageCanvasRenderer {
         int inset = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x30FFF1D4 : 0x22FFF6E3, textAlpha);
         int topGlow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x7AD8BC84 : 0x4CCBAE74, textAlpha);
         int shadow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x18000000 : 0x10000000, textAlpha);
-        graphics.setColor(new Color(fill, true));
-        graphics.fillRect(box.x(), box.y(), box.width(), box.height());
-        if (box.width() > 2 && box.height() > 2) {
+        if (((fill >>> 24) & 0xFF) > 0) {
+            graphics.setColor(new Color(fill, true));
+            graphics.fillRect(box.x(), box.y(), box.width(), box.height());
+        }
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 2 && box.height() > 2) {
             graphics.setColor(new Color(inset, true));
             graphics.fillRect(box.x() + 1, box.y() + 1, Math.max(1, box.width() - 2), Math.max(1, box.height() - 2));
         }
-        if (box.width() > 4 && box.height() > 4) {
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 4 && box.height() > 4) {
             graphics.setColor(new Color(shadow, true));
             graphics.fillRect(box.x() + 2, box.y() + box.height() - 3, Math.max(1, box.width() - 4), 1);
         }
-        graphics.setColor(new Color(border, true));
-        graphics.drawRect(box.x(), box.y(), Math.max(1, box.width() - 1), Math.max(1, box.height() - 1));
-        if (box.width() > 8) {
+        if (((border >>> 24) & 0xFF) > 0) {
+            graphics.setColor(new Color(border, true));
+            graphics.drawRect(box.x(), box.y(), Math.max(1, box.width() - 1), Math.max(1, box.height() - 1));
+        }
+        if (((fill >>> 24) & 0xFF) > 0 && box.width() > 8) {
             graphics.setColor(new Color(topGlow, true));
             graphics.fillRect(box.x() + 3, box.y() + 2, Math.max(1, box.width() - 6), 1);
         }
@@ -619,8 +710,13 @@ public final class PageCanvasRenderer {
     }
 
     private static int applyAlpha(int color, float alpha) {
-        int clampedAlpha = Math.clamp(Math.round(Math.clamp(alpha, 0.0f, 1.0f) * 255.0f), 0, 255);
-        return (color & 0x00FFFFFF) | (clampedAlpha << 24);
+        int sourceAlpha = (color >>> 24) & 0xFF;
+        int scaledAlpha = Math.clamp(
+                Math.round(sourceAlpha * Math.clamp(alpha, 0.0f, 1.0f)),
+                0,
+                255
+        );
+        return (color & 0x00FFFFFF) | (scaledAlpha << 24);
     }
 
     private static int alignedX(String line, int x, int width, BookTextBlock.Kind kind, java.util.function.ToIntFunction<String> widthMeasure) {

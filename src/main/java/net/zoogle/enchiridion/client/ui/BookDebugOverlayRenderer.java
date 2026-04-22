@@ -2,7 +2,7 @@ package net.zoogle.enchiridion.client.ui;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.zoogle.enchiridion.api.BookPageElement;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
 final class BookDebugOverlayRenderer {
@@ -35,29 +35,28 @@ final class BookDebugOverlayRenderer {
             drawDebugLine(graphics, font, describePageDebug("R", viewState.pageInteractionDebugState().right()), 8, debugY + 10);
         }
 
-        for (BookInteractionResolver.ResolvedInteractiveTarget target : viewState.resolvedInteractiveTargets()) {
-            if (target.interactiveElement() == null) {
-                continue;
-            }
+        for (PageInteractiveNode target : viewState.resolvedInteractiveTargets()) {
             int color = target == viewState.hoveredInteractiveTarget()
-                    ? 0xCCAA33FF
-                    : targetInsideVisiblePage(target, viewState.pageInteractionDebugState()) ? 0xAA33CC66 : 0xCCFF4444;
+                    ? hoveredColorFor(target)
+                    : targetInsideVisiblePage(target, viewState.pageInteractionDebugState()) ? colorFor(target) : 0xCCFF4444;
             drawQuadOutline(graphics, target.screenQuad(), color);
+            drawProjectedNodeCenter(graphics, target, target == viewState.hoveredInteractiveTarget() ? 0xFFFFFFFF : color);
         }
-        if (viewState.hoveredInteractiveTarget() != null && viewState.hoveredInteractiveTarget().interactiveElement() != null) {
+        if (viewState.hoveredInteractiveTarget() != null) {
             BookSceneRenderer.PageLocalPoint localPoint = sceneRenderer.pageLocalPoint(
                     viewState.layout(),
                     controller.visualState(),
                     controller.animationProgress(),
                     controller.projectionProgress(),
                     viewState.currentProjectionFocusOffset(),
-                    interactionResolver.pageSideFor(viewState.displayedSpread(), viewState.hoveredInteractiveTarget().interactiveElement()),
+                    viewState.hoveredInteractiveTarget().pageSide(),
                     mouseX,
                     mouseY
             );
             if (localPoint != null) {
                 graphics.drawString(font, String.format("page %.1f, %.1f", localPoint.localX(), localPoint.localY()), 8, screenHeight - 16, 0xFFFFFFFF, false);
             }
+            drawDebugLine(graphics, font, describeHoveredTarget(viewState.hoveredInteractiveTarget()), 8, screenHeight - 6);
         }
     }
 
@@ -85,20 +84,8 @@ final class BookDebugOverlayRenderer {
             graphics.fill(px - 2, py - 1, px + 3, py + 2, pointColor);
             graphics.fill(px - 1, py - 2, px + 2, py + 3, pointColor);
         }
-        if (side.containingText() != null) {
-            BookSceneRenderer.ScreenRect rect = sceneRenderer.projectPageRect(
-                    viewState.layout(),
-                    controller.visualState(),
-                    controller.animationProgress(),
-                    controller.projectionProgress(),
-                    viewState.currentProjectionFocusOffset(),
-                    side.pageSide(),
-                    side.containingText().x(),
-                    side.containingText().y(),
-                    side.containingText().width(),
-                    side.containingText().height()
-            );
-            drawRectOutline(graphics, rect, 0xFFFF66CC);
+        if (side.containingTarget() != null) {
+            drawQuadOutline(graphics, side.containingTarget().screenQuad(), 0xFFFF66CC);
         }
     }
 
@@ -109,7 +96,7 @@ final class BookDebugOverlayRenderer {
         if (side.localPoint() == null) {
             return prefix + ": local=null hit=none";
         }
-        String hit = describeInteractiveElement(side.containingText());
+        String hit = describeInteractiveTarget(side.containingTarget());
         return String.format(
                 "%s: local=(%.1f, %.1f) hit=%s quad=(%.1f,%.1f)-(%.1f,%.1f)",
                 prefix,
@@ -123,25 +110,20 @@ final class BookDebugOverlayRenderer {
         );
     }
 
-    private String describeInteractiveElement(BookPageElement.InteractiveElement element) {
-        if (element == null) {
+    private String describeInteractiveTarget(PageInteractiveNode node) {
+        if (node == null) {
             return "none";
         }
-        if (element instanceof BookPageElement.InteractiveTextElement text) {
-            return text.text().getString();
-        }
-        if (element instanceof BookPageElement.ButtonElement button) {
-            return button.label().getString();
-        }
-        return element.stableId();
+        return node.label() != null ? node.label().getString() : node.stableId();
     }
 
-    private void drawHoveredInteractiveTextBounds(GuiGraphics graphics, BookInteractionResolver.ResolvedInteractiveTarget hoveredTarget) {
+    private void drawHoveredInteractiveTextBounds(GuiGraphics graphics, PageInteractiveNode hoveredTarget) {
         if (hoveredTarget == null) {
             return;
         }
         drawQuadOutline(graphics, hoveredTarget.screenQuad(), 0xEEFFCC33);
         drawQuadOutline(graphics, insetQuad(hoveredTarget.screenQuad(), 1.0f), 0xEE6A38FF);
+        drawRectOutline(graphics, hoveredTarget.screenRect(), 0x886A38FF);
     }
 
     private void drawQuadOutline(GuiGraphics graphics, BookSceneRenderer.PageSurfaceBounds bounds, int color) {
@@ -177,6 +159,15 @@ final class BookDebugOverlayRenderer {
         graphics.fill(x1 - 1, y0, x1, y1, color);
     }
 
+    private void drawProjectedNodeCenter(GuiGraphics graphics, PageInteractiveNode node, int color) {
+        BookSceneRenderer.ScreenQuad quad = node.screenQuad();
+        float centerX = (quad.topLeft().x() + quad.topRight().x() + quad.bottomRight().x() + quad.bottomLeft().x()) / 4.0f;
+        float centerY = (quad.topLeft().y() + quad.topRight().y() + quad.bottomRight().y() + quad.bottomLeft().y()) / 4.0f;
+        int cx = Math.round(centerX);
+        int cy = Math.round(centerY);
+        graphics.fill(cx - 1, cy - 1, cx + 2, cy + 2, color);
+    }
+
     private BookSceneRenderer.ScreenQuad insetQuad(BookSceneRenderer.ScreenQuad quad, float inset) {
         return new BookSceneRenderer.ScreenQuad(
                 offsetTowardCenter(quad.topLeft(), quad, inset),
@@ -199,7 +190,7 @@ final class BookDebugOverlayRenderer {
         return new BookSceneRenderer.ScreenPoint(point.x() + (dx * scale), point.y() + (dy * scale));
     }
 
-    private boolean targetInsideVisiblePage(BookInteractionResolver.ResolvedInteractiveTarget target, BookInteractionResolver.PageInteractionDebugState debugState) {
+    private boolean targetInsideVisiblePage(PageInteractiveNode target, BookInteractionResolver.PageInteractionDebugState debugState) {
         if (debugState == null) {
             return true;
         }
@@ -250,9 +241,37 @@ final class BookDebugOverlayRenderer {
         graphics.drawString(font, text, x, y, 0xFFFFFFFF, false);
     }
 
+    private String describeHoveredTarget(PageInteractiveNode target) {
+        return String.format(
+                "hover=%s [%s] local=(%d,%d %dx%d)",
+                describeInteractiveTarget(target),
+                target.visualType(),
+                target.localX(),
+                target.localY(),
+                target.localWidth(),
+                target.localHeight()
+        );
+    }
+
+    private int colorFor(PageInteractiveNode target) {
+        return switch (target.visualType()) {
+            case INLINE_LINK -> 0xAA33CC66;
+            case BUTTON -> 0xAA66C8FF;
+            case HOTSPOT -> 0xAAFFC14D;
+        };
+    }
+
+    private int hoveredColorFor(PageInteractiveNode target) {
+        return switch (target.visualType()) {
+            case INLINE_LINK -> 0xCCAA33FF;
+            case BUTTON -> 0xCC33E5FF;
+            case HOTSPOT -> 0xCCFFD84D;
+        };
+    }
+
     private BookInteractionResolver.PageDebugSide debugCursorSide(
             BookInteractionResolver.PageInteractionDebugState debugState,
-            BookInteractionResolver.ResolvedInteractiveTarget hoveredTarget
+            PageInteractiveNode hoveredTarget
     ) {
         if (debugState == null) {
             return null;

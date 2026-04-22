@@ -9,6 +9,7 @@ import java.util.Map;
 record LevelRpgJournalDocument(
         List<BookSpread> spreads,
         Map<Integer, List<BookInteractiveRegion>> interactiveRegionsBySpread,
+        Map<Integer, String> pagePurposeByPage,
         List<String> projectionFocusOrder,
         Map<String, Integer> projectionSpreadByFocus,
         Map<String, Integer> projectionPageByFocus

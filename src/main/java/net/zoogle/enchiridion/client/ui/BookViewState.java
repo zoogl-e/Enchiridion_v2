@@ -4,12 +4,13 @@ import net.minecraft.network.chat.Component;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
 import java.util.ArrayList;
 import java.util.List;
 
-final class BookViewState {
+public final class BookViewState {
     private static final int INITIAL_TEXT_DELAY_TICKS = 32;
     private static final float TEXT_FADE_OUT_PER_TICK = 0.45f;
     private static final float TEXT_FADE_IN_PER_TICK = 0.18f;
@@ -27,8 +28,8 @@ final class BookViewState {
     private int initialTextDelayTicksRemaining;
     private boolean closedBookHovered;
     private boolean closedBookInspecting;
-    private List<BookInteractionResolver.ResolvedInteractiveTarget> resolvedInteractiveTargets = List.of();
-    private BookInteractionResolver.ResolvedInteractiveTarget hoveredInteractiveTarget;
+    private List<PageInteractiveNode> resolvedInteractiveTargets = List.of();
+    private PageInteractiveNode hoveredInteractiveTarget;
     private ProjectionButtonHit hoveredProjectionButton;
     private BookInteractionResolver.PageInteractionDebugState pageInteractionDebugState;
     private float inspectYaw;
@@ -41,7 +42,7 @@ final class BookViewState {
         layout = BookLayout.fromScreen(width, height);
     }
 
-    BookLayout layout() {
+    public BookLayout layout() {
         return layout;
     }
 
@@ -197,11 +198,11 @@ final class BookViewState {
         return (pageIndex % 2) == 0 ? BookPageSide.LEFT : BookPageSide.RIGHT;
     }
 
-    BookSpread displayedSpread() {
+    public BookSpread displayedSpread() {
         return displayedSpread;
     }
 
-    int displayedSpreadIndex() {
+    public int displayedSpreadIndex() {
         return displayedSpreadIndex;
     }
 
@@ -229,8 +230,17 @@ final class BookViewState {
         return inspectPitch;
     }
 
-    float currentProjectionFocusOffset() {
+    public float currentProjectionFocusOffset() {
         return currentProjectionFocusOffset;
+    }
+
+    public void refreshDisplayedSpread(BookScreenController controller) {
+        displayedSpread = controller.currentSpread();
+        displayedSpreadIndex = controller.spreadIndex();
+        targetSpread = displayedSpread;
+        targetSpreadIndex = displayedSpreadIndex;
+        textAlpha = 1.0f;
+        textTransitionState = TextTransitionState.STABLE;
     }
 
     void setInteraction(BookInteractionResolver.Resolution interaction) {
@@ -239,11 +249,11 @@ final class BookViewState {
         pageInteractionDebugState = interaction.debugState();
     }
 
-    List<BookInteractionResolver.ResolvedInteractiveTarget> resolvedInteractiveTargets() {
+    List<PageInteractiveNode> resolvedInteractiveTargets() {
         return resolvedInteractiveTargets;
     }
 
-    BookInteractionResolver.ResolvedInteractiveTarget hoveredInteractiveTarget() {
+    PageInteractiveNode hoveredInteractiveTarget() {
         return hoveredInteractiveTarget;
     }
 

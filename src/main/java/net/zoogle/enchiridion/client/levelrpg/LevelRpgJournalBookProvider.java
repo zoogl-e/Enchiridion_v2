@@ -7,10 +7,11 @@ import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageProvider;
 import net.zoogle.enchiridion.api.BookProjectionView;
 import net.zoogle.enchiridion.api.BookSpread;
+import net.zoogle.enchiridion.api.BookTemplateDebugProvider;
 
 import java.util.List;
 
-public final class LevelRpgJournalBookProvider implements BookPageProvider {
+public final class LevelRpgJournalBookProvider implements BookPageProvider, BookTemplateDebugProvider {
     @Override
     public int spreadCount(BookContext context) {
         return document(context).spreads().size();
@@ -82,6 +83,11 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider {
     @Override
     public int pageIndexForProjectionFocus(BookContext context, String focusId) {
         return document(context).projectionPageByFocus().getOrDefault(focusId, -1);
+    }
+
+    @Override
+    public String templatePurposeForPageIndex(BookContext context, int pageIndex) {
+        return document(context).pagePurposeByPage().get(pageIndex);
     }
 
     private static LevelRpgJournalDocument document(BookContext context) {

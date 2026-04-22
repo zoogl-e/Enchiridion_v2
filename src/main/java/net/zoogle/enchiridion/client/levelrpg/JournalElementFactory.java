@@ -41,6 +41,34 @@ final class JournalElementFactory {
         );
     }
 
+    static PageInteractiveTextLayout centeredPageTextLayout(
+            String stableId,
+            BookTextBlock.Kind kind,
+            String text,
+            int contentX,
+            int contentY,
+            int contentWidth,
+            Component tooltip,
+            BookRegionAction action
+    ) {
+        int textWidth = Math.max(1, Minecraft.getInstance().font.width(text));
+        int drawX = contentX + Math.max(0, (contentWidth - textWidth) / 2);
+        int textHeight = JournalLayoutMetrics.lineHeightFor(kind);
+        return new PageInteractiveTextLayout(
+                stableId,
+                BookPageElement.InteractiveVisualStyle.MANUSCRIPT_LINK,
+                kind,
+                text,
+                drawX,
+                contentY,
+                textWidth,
+                textHeight,
+                tooltip,
+                action,
+                true
+        );
+    }
+
     static BookPageElement.TextElement textElement(
             BookTextBlock.Kind kind,
             String text,
@@ -76,6 +104,48 @@ final class JournalElementFactory {
                 contentY,
                 textWidth,
                 JournalLayoutMetrics.lineHeightFor(kind)
+        );
+    }
+
+    static BookPageElement.TextElement centeredRoleTextElement(
+            JournalTextRole role,
+            String text,
+            BookPageSide pageSide,
+            int y
+    ) {
+        JournalLayoutMetrics.PageContentRect rect = JournalLayoutMetrics.pageContentRect(pageSide);
+        return centeredRoleTextElement(role, text, rect.contentX(), y, rect.contentWidth());
+    }
+
+    static BookPageElement.TextElement centeredRoleTextElement(
+            JournalTextRole role,
+            String text,
+            int contentX,
+            int y,
+            int contentWidth
+    ) {
+        return centeredTextElement(JournalPageStyleSystem.kindFor(role), text, contentX, y, contentWidth);
+    }
+
+    static PageInteractiveTextLayout centeredRoleInteractiveTextLayout(
+            String stableId,
+            JournalTextRole role,
+            String text,
+            BookPageSide pageSide,
+            int y,
+            Component tooltip,
+            BookRegionAction action
+    ) {
+        JournalLayoutMetrics.PageContentRect rect = JournalLayoutMetrics.pageContentRect(pageSide);
+        return centeredPageTextLayout(
+                stableId,
+                JournalPageStyleSystem.kindFor(role),
+                text,
+                rect.contentX(),
+                y,
+                rect.contentWidth(),
+                tooltip,
+                action
         );
     }
 
@@ -198,10 +268,7 @@ final class JournalElementFactory {
         String label = stat.name();
         String valueText = String.valueOf(stat.value());
         JournalLayoutMetrics.PageContentRect contentRect = JournalLayoutMetrics.pageContentRect(pageSide);
-        int rowHeight = Math.max(
-                JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY),
-                JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.SUBTITLE)
-        );
+        int rowHeight = ledgerRowHeight();
         int labelHeight = Minecraft.getInstance().font.lineHeight;
         int labelY = rowY + Math.max(0, (rowHeight - labelHeight) / 2);
         int labelX = contentRect.contentX();
@@ -224,6 +291,13 @@ final class JournalElementFactory {
                 ".".repeat(dotCount),
                 valueText,
                 targetPageIndex
+        );
+    }
+
+    static int ledgerRowHeight() {
+        return Math.max(
+                JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY),
+                JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.SUBTITLE)
         );
     }
 

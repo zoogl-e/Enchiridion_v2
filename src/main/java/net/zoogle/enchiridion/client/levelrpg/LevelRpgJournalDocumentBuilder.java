@@ -17,22 +17,23 @@ final class LevelRpgJournalDocumentBuilder {
         LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
         List<BookPage> pages = new ArrayList<>();
         Map<Integer, List<BookInteractiveRegion>> pageRegions = new LinkedHashMap<>();
+        Map<Integer, String> pagePurposes = new LinkedHashMap<>();
 
         List<BookPage> introPages = LevelRpgJournalComposer.buildLegacyOpeningPages(context);
         List<NamedSectionLayout> skillSections = new ArrayList<>();
-        for (JournalSkillEntry skill : snapshot.skills()) {
-            skillSections.add(new NamedSectionLayout(skill.name(), LevelRpgJournalComposer.buildSkillPages(skill)));
-        }
 
-        List<BookPage> identityPages = LevelRpgJournalComposer.buildIdentityPages(snapshot.characterSheet());
         int characterPageStart = introPages.size();
+        int firstLedgerPageIndex = characterPageStart + 2;
+        List<BookPage> identityPages = LevelRpgJournalComposer.buildIdentityPages(context, snapshot.characterSheet(), firstLedgerPageIndex);
         Map<String, Integer> skillStartPages = new LinkedHashMap<>();
         int nextPageStart = characterPageStart
                 + identityPages.size()
                 + LevelRpgJournalComposer.ledgerPageCount(snapshot.characterSheet().stats());
-        for (NamedSectionLayout skillSection : skillSections) {
-            skillStartPages.put(skillSection.label(), nextPageStart);
-            nextPageStart += skillSection.pages().size();
+        for (JournalSkillEntry skill : snapshot.skills()) {
+            skillStartPages.put(skill.name(), nextPageStart);
+            List<BookPage> pagesForSkill = LevelRpgJournalComposer.buildSkillPages(skill, nextPageStart);
+            skillSections.add(new NamedSectionLayout(skill.name(), pagesForSkill));
+            nextPageStart += pagesForSkill.size();
         }
 
         List<BookPage> ledgerPages = LevelRpgJournalComposer.buildLedgerPages(
@@ -42,10 +43,16 @@ final class LevelRpgJournalDocumentBuilder {
         );
 
         pages.addAll(introPages);
+        markPurposes(pagePurposes, 0, introPages.size(), JournalPagePurpose.FRONT_MATTER);
         pages.addAll(identityPages);
+        pagePurposes.put(characterPageStart, JournalPagePurpose.CHARACTER_IDENTITY.name());
+        pagePurposes.put(characterPageStart + 1, JournalPagePurpose.CHARACTER_STANDING.name());
         pages.addAll(ledgerPages);
+        markPurposes(pagePurposes, characterPageStart + identityPages.size(), ledgerPages.size(), JournalPagePurpose.LEDGER);
         for (NamedSectionLayout skillSection : skillSections) {
+            int startIndex = pages.size();
             pages.addAll(skillSection.pages());
+            markPurposes(pagePurposes, startIndex, skillSection.pages().size(), JournalPagePurpose.SKILL_DETAIL);
         }
 
         List<String> projectionFocusOrder = snapshot.skills().stream().map(JournalSkillEntry::name).toList();
@@ -56,12 +63,13 @@ final class LevelRpgJournalDocumentBuilder {
             projectionPageByFocus.put(entry.getKey(), entry.getValue());
         }
 
-        return pairPagesIntoSpreads(pages, pageRegions, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
+        return pairPagesIntoSpreads(pages, pageRegions, pagePurposes, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
     }
 
     private static LevelRpgJournalDocument pairPagesIntoSpreads(
             List<BookPage> pages,
             Map<Integer, List<BookInteractiveRegion>> pageRegions,
+            Map<Integer, String> pagePurposes,
             List<String> projectionFocusOrder,
             Map<String, Integer> projectionSpreadByFocus,
             Map<String, Integer> projectionPageByFocus
@@ -95,10 +103,17 @@ final class LevelRpgJournalDocumentBuilder {
         return new LevelRpgJournalDocument(
                 List.copyOf(spreads),
                 Map.copyOf(spreadRegions),
+                Map.copyOf(pagePurposes),
                 List.copyOf(projectionFocusOrder),
                 Map.copyOf(projectionSpreadByFocus),
                 Map.copyOf(projectionPageByFocus)
         );
+    }
+
+    private static void markPurposes(Map<Integer, String> pagePurposes, int startIndex, int count, JournalPagePurpose purpose) {
+        for (int index = 0; index < count; index++) {
+            pagePurposes.put(startIndex + index, purpose.name());
+        }
     }
 
     private record NamedSectionLayout(String label, List<BookPage> pages) {}

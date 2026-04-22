@@ -119,6 +119,10 @@ public final class BookScreenController implements BookProjectionController.Proj
         return isOpenReadable() && !isProjectionVisible();
     }
 
+    public boolean isInteractionStableReadable() {
+        return animController.getState() == BookAnimState.IDLE_OPEN && !isProjectionVisible();
+    }
+
     public boolean isClosed() {
         return animController.getState() == BookAnimState.CLOSED;
     }
@@ -197,6 +201,10 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     void reloadSpread() {
         currentSpread = definition.provider().getSpread(context, animController.getCurrentSpread());
+    }
+
+    public void refreshCurrentSpread() {
+        reloadSpread();
     }
 
     @Override

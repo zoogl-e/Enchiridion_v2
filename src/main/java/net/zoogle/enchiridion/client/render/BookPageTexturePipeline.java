@@ -6,9 +6,9 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.zoogle.enchiridion.Enchiridion;
 import net.zoogle.enchiridion.api.BookPage;
-import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -98,13 +98,17 @@ final class BookPageTexturePipeline {
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveElement rightHoveredInteractiveElement
+            java.util.List<PageInteractiveNode> leftInteractiveNodes,
+            java.util.List<PageInteractiveNode> rightInteractiveNodes,
+            PageInteractiveNode leftHoveredInteractiveNode,
+            PageInteractiveNode rightHoveredInteractiveNode
     ) {
         int textAlphaKey = Math.clamp(Math.round(Math.clamp(textAlpha, 0.0f, 1.0f) * 255.0f), 0, 255);
         int glitchStrengthKey = Math.clamp(Math.round(Math.clamp(glitchStrength, 0.0f, 1.0f) * 255.0f), 0, 255);
         int focusedPageSideKey = focusedPageSide == null ? -1 : focusedPageSide.ordinal();
-        int interactiveStateKey = 31 * interactiveElementKey(leftHoveredInteractiveElement) + interactiveElementKey(rightHoveredInteractiveElement);
+        int interactiveStateKey = 31 * interactiveNodeListKey(leftInteractiveNodes) + interactiveNodeListKey(rightInteractiveNodes);
+        interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(leftHoveredInteractiveNode);
+        interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(rightHoveredInteractiveNode);
         long animationBucket = currentAnimationBucket();
         if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha || animationBucket != lastAnimationBucket || glitchStrengthKey != lastGlitchStrength || focusedPageSideKey != lastFocusedPageSide || interactiveStateKey != lastInteractiveStateKey) {
             updateMagicPlaneTextures(
@@ -113,8 +117,10 @@ final class BookPageTexturePipeline {
                     textAlpha,
                     glitchStrength,
                     focusedPageSide,
-                    leftHoveredInteractiveElement,
-                    rightHoveredInteractiveElement
+                    leftInteractiveNodes,
+                    rightInteractiveNodes,
+                    leftHoveredInteractiveNode,
+                    rightHoveredInteractiveNode
             );
             lastSpreadIndex = spreadIndex;
             lastTextAlpha = textAlphaKey;
@@ -132,15 +138,17 @@ final class BookPageTexturePipeline {
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveElement rightHoveredInteractiveElement
+            java.util.List<PageInteractiveNode> leftInteractiveNodes,
+            java.util.List<PageInteractiveNode> rightInteractiveNodes,
+            PageInteractiveNode leftHoveredInteractiveNode,
+            PageInteractiveNode rightHoveredInteractiveNode
     ) {
         int leftPageNumber = (spreadIndex * 2) + 1;
         int rightPageNumber = leftPageNumber + 1;
         float leftFocusStrength = focusedPageSide == BookPageSide.LEFT ? 1.0f : 0.0f;
         float rightFocusStrength = focusedPageSide == BookPageSide.RIGHT ? 1.0f : 0.0f;
-        updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, focusGlitchStrength(glitchStrength, leftFocusStrength), leftFocusStrength, 0, true, leftPageNumber, leftHoveredInteractiveElement);
-        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, focusGlitchStrength(glitchStrength, rightFocusStrength), rightFocusStrength, PageCanvasRenderer.RIGHT_PAGE_INSET, false, rightPageNumber, rightHoveredInteractiveElement);
+        updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, focusGlitchStrength(glitchStrength, leftFocusStrength), leftFocusStrength, 0, true, leftPageNumber, leftInteractiveNodes, leftHoveredInteractiveNode);
+        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, focusGlitchStrength(glitchStrength, rightFocusStrength), rightFocusStrength, PageCanvasRenderer.RIGHT_PAGE_INSET, false, rightPageNumber, rightInteractiveNodes, rightHoveredInteractiveNode);
     }
 
     private static float focusGlitchStrength(float baseGlitchStrength, float focusStrength) {
@@ -160,7 +168,8 @@ final class BookPageTexturePipeline {
             int horizontalInset,
             boolean mirrorHorizontally,
             Integer pageNumber,
-            BookPageElement.InteractiveElement hoveredInteractiveElement
+            java.util.List<PageInteractiveNode> interactiveNodes,
+            PageInteractiveNode hoveredInteractiveNode
     ) {
         BufferedImage composed = copyImage(transparentCanvas);
         Graphics2D graphics = composed.createGraphics();
@@ -196,7 +205,8 @@ final class BookPageTexturePipeline {
                 horizontalInset,
                 pageNumber,
                 glitchStrength,
-                hoveredInteractiveElement
+                interactiveNodes,
+                hoveredInteractiveNode
         );
         pageGraphics.dispose();
 
@@ -259,16 +269,28 @@ final class BookPageTexturePipeline {
         return minecraft.level.getGameTime() / 3L;
     }
 
-    private static int interactiveElementKey(BookPageElement.InteractiveElement element) {
-        if (element == null) {
+    private static int interactiveNodeKey(PageInteractiveNode node) {
+        if (node == null) {
             return 0;
         }
         int key = 1;
-        key = 31 * key + element.stableId().hashCode();
-        key = 31 * key + element.x();
-        key = 31 * key + element.y();
-        key = 31 * key + element.width();
-        key = 31 * key + element.height();
+        key = 31 * key + node.stableId().hashCode();
+        key = 31 * key + node.localX();
+        key = 31 * key + node.localY();
+        key = 31 * key + node.localWidth();
+        key = 31 * key + node.localHeight();
+        key = 31 * key + node.visualType().ordinal();
+        return key;
+    }
+
+    private static int interactiveNodeListKey(java.util.List<PageInteractiveNode> nodes) {
+        int key = 1;
+        if (nodes == null) {
+            return key;
+        }
+        for (PageInteractiveNode node : nodes) {
+            key = 31 * key + interactiveNodeKey(node);
+        }
         return key;
     }
 

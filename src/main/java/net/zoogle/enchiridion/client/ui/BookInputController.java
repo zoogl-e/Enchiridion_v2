@@ -1,6 +1,7 @@
 package net.zoogle.enchiridion.client.ui;
 
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Supplier;
@@ -67,7 +68,7 @@ final class BookInputController {
             return false;
         }
         if (controller.isJournalReadable()) {
-            BookInteractionResolver.ResolvedInteractiveTarget hoveredTarget = state.hoveredInteractiveTarget();
+            PageInteractiveNode hoveredTarget = state.hoveredInteractiveTarget();
             if (hoveredTarget != null && hoveredTarget.enabled() && hoveredTarget.action().onClick(controller.context(), state.displayedSpreadIndex(), button)) {
                 return true;
             }

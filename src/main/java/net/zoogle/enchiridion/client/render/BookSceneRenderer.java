@@ -9,6 +9,7 @@ import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
+import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.ui.BookLayout;
 import org.joml.Vector3f;
 import software.bernie.geckolib.renderer.GeoObjectRenderer;
@@ -206,8 +207,10 @@ public final class BookSceneRenderer {
             float projectionProgress,
             float projectionFocusOffset,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveElement rightHoveredInteractiveElement,
+            java.util.List<PageInteractiveNode> leftInteractiveNodes,
+            java.util.List<PageInteractiveNode> rightInteractiveNodes,
+            PageInteractiveNode leftHoveredInteractiveNode,
+            PageInteractiveNode rightHoveredInteractiveNode,
             int mouseX,
             int mouseY,
             float textAlpha,
@@ -222,8 +225,10 @@ public final class BookSceneRenderer {
                 textAlpha,
                 projectionProgress,
                 focusedPageSide,
-                leftHoveredInteractiveElement,
-                rightHoveredInteractiveElement
+                leftInteractiveNodes,
+                rightInteractiveNodes,
+                leftHoveredInteractiveNode,
+                rightHoveredInteractiveNode
         );
         bookAnimatable.setAnimState(state);
         bookAnimatable.setTextureLocation(textures.baseTexture());
