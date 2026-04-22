@@ -74,14 +74,32 @@ final class BookPageTexturePipeline {
         return new RenderRegionSize(regionW, regionH);
     }
 
+    static LocalTexturePoint localPointForTextureUv(BookPageSide pageSide, float texU, float texV) {
+        float u0 = pageSide == BookPageSide.LEFT ? LEFT_U0 / UV_SPACE_SIZE : RIGHT_U0 / UV_SPACE_SIZE;
+        float v0 = pageSide == BookPageSide.LEFT ? LEFT_V0 / UV_SPACE_SIZE : RIGHT_V0 / UV_SPACE_SIZE;
+        float u1 = pageSide == BookPageSide.LEFT ? LEFT_U1 / UV_SPACE_SIZE : RIGHT_U1 / UV_SPACE_SIZE;
+        float v1 = pageSide == BookPageSide.LEFT ? LEFT_V1 / UV_SPACE_SIZE : RIGHT_V1 / UV_SPACE_SIZE;
+        float minU = Math.min(u0, u1);
+        float maxU = Math.max(u0, u1);
+        float minV = Math.min(v0, v1);
+        float maxV = Math.max(v0, v1);
+        if (texU < minU - 0.0001f || texU > maxU + 0.0001f || texV < minV - 0.0001f || texV > maxV + 0.0001f) {
+            return null;
+        }
+        RenderRegionSize size = renderRegionSize(pageSide);
+        float normalizedU = (texU - minU) / Math.max(0.0001f, maxU - minU);
+        float normalizedV = (texV - minV) / Math.max(0.0001f, maxV - minV);
+        return new LocalTexturePoint(normalizedU * size.width(), normalizedV * size.height());
+    }
+
     public TextureSet textureSetFor(
             BookSpread spread,
             int spreadIndex,
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveTextElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveTextElement rightHoveredInteractiveElement
+            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
+            BookPageElement.InteractiveElement rightHoveredInteractiveElement
     ) {
         int textAlphaKey = Math.clamp(Math.round(Math.clamp(textAlpha, 0.0f, 1.0f) * 255.0f), 0, 255);
         int glitchStrengthKey = Math.clamp(Math.round(Math.clamp(glitchStrength, 0.0f, 1.0f) * 255.0f), 0, 255);
@@ -114,8 +132,8 @@ final class BookPageTexturePipeline {
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveTextElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveTextElement rightHoveredInteractiveElement
+            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
+            BookPageElement.InteractiveElement rightHoveredInteractiveElement
     ) {
         int leftPageNumber = (spreadIndex * 2) + 1;
         int rightPageNumber = leftPageNumber + 1;
@@ -142,7 +160,7 @@ final class BookPageTexturePipeline {
             int horizontalInset,
             boolean mirrorHorizontally,
             Integer pageNumber,
-            BookPageElement.InteractiveTextElement hoveredInteractiveElement
+            BookPageElement.InteractiveElement hoveredInteractiveElement
     ) {
         BufferedImage composed = copyImage(transparentCanvas);
         Graphics2D graphics = composed.createGraphics();
@@ -241,19 +259,20 @@ final class BookPageTexturePipeline {
         return minecraft.level.getGameTime() / 3L;
     }
 
-    private static int interactiveElementKey(BookPageElement.InteractiveTextElement element) {
+    private static int interactiveElementKey(BookPageElement.InteractiveElement element) {
         if (element == null) {
             return 0;
         }
         int key = 1;
+        key = 31 * key + element.stableId().hashCode();
         key = 31 * key + element.x();
         key = 31 * key + element.y();
         key = 31 * key + element.width();
         key = 31 * key + element.height();
-        key = 31 * key + element.text().getString().hashCode();
         return key;
     }
 
     record TextureSet(ResourceLocation baseTexture, ResourceLocation magicLeftTexture, ResourceLocation magicRightTexture) {}
     record RenderRegionSize(int width, int height) {}
+    record LocalTexturePoint(float localX, float localY) {}
 }

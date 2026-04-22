@@ -49,9 +49,10 @@ public final class PageCanvasRenderer {
     public void renderPage(GuiGraphics graphics, BookPage page, int x, int y, int width, int height, float textAlpha, int horizontalInset, Integer pageNumber, float glitchStrength) {
         graphics.fill(x, y, x + width, y + height, 0x10FFFFFF);
 
-        int contentX = x + PAGE_MARGIN_X + horizontalInset;
+        PageContentMetrics.ContentRect contentRect = PageContentMetrics.forInset(horizontalInset);
+        int contentX = x + contentRect.contentX();
         int contentY = y + PAGE_MARGIN_Y;
-        int contentWidth = Math.max(0, width - (PAGE_MARGIN_X * 2) - horizontalInset);
+        int contentWidth = Math.max(0, contentRect.contentWidth());
         int contentBottom = y + height - PAGE_MARGIN_Y;
         contentY = adjustedContentY(page, contentY, contentBottom);
 
@@ -134,11 +135,12 @@ public final class PageCanvasRenderer {
             int horizontalInset,
             Integer pageNumber,
             float glitchStrength,
-            BookPageElement.InteractiveTextElement hoveredInteractiveElement
+            BookPageElement.InteractiveElement hoveredInteractiveElement
     ) {
-        int contentX = x + PAGE_MARGIN_X + horizontalInset;
+        PageContentMetrics.ContentRect contentRect = PageContentMetrics.forInset(horizontalInset);
+        int contentX = x + contentRect.contentX();
         int contentY = y + PAGE_MARGIN_Y;
-        int contentWidth = Math.max(0, width - (PAGE_MARGIN_X * 2) - horizontalInset);
+        int contentWidth = Math.max(0, contentRect.contentWidth());
         int contentBottom = y + height - PAGE_MARGIN_Y;
         contentY = adjustedContentY(page, contentY, contentBottom);
 
@@ -160,7 +162,7 @@ public final class PageCanvasRenderer {
         drawPageNumber(graphics, x, y, width, height, page, textAlpha, pageNumber);
     }
 
-    private void renderPageElements(GuiGraphics graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveTextElement hoveredInteractiveElement) {
+    private void renderPageElements(GuiGraphics graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
         if (elements == null || elements.isEmpty()) {
             return;
         }
@@ -169,7 +171,7 @@ public final class PageCanvasRenderer {
         }
     }
 
-    private void renderPageElementsToGraphics2D(Graphics2D graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveTextElement hoveredInteractiveElement) {
+    private void renderPageElementsToGraphics2D(Graphics2D graphics, List<BookPageElement> elements, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
         if (elements == null || elements.isEmpty()) {
             return;
         }
@@ -178,7 +180,7 @@ public final class PageCanvasRenderer {
         }
     }
 
-    private void renderPageElement(GuiGraphics graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveTextElement hoveredInteractiveElement) {
+    private void renderPageElement(GuiGraphics graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
         switch (element) {
             case BookPageElement.TextElement text ->
                     renderLine(graphics, text.text().getString(), text.x(), text.y(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
@@ -186,7 +188,10 @@ public final class PageCanvasRenderer {
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
                     renderInteractiveTextElement(graphics, interactive, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(interactive));
+            case BookPageElement.ButtonElement button ->
+                    renderButtonElement(graphics, button, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(button));
             case BookPageElement.BoxElement box -> renderBox(graphics, box, textAlpha);
+            case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
             }
             case BookPageElement.WidgetElement widget ->
@@ -194,7 +199,7 @@ public final class PageCanvasRenderer {
         }
     }
 
-    private void renderPageElementToGraphics2D(Graphics2D graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveTextElement hoveredInteractiveElement) {
+    private void renderPageElementToGraphics2D(Graphics2D graphics, BookPageElement element, float textAlpha, BookPageElement.InteractiveElement hoveredInteractiveElement) {
         switch (element) {
             case BookPageElement.TextElement text ->
                     renderLine(graphics, text.text().getString(), text.x(), text.y() + graphics.getFontMetrics().getAscent(), text.width(), applyAlpha(colorFor(text.kind()), textAlpha), text.kind(), textAlpha, 0, 0.0f);
@@ -202,12 +207,10 @@ public final class PageCanvasRenderer {
                     renderLine(graphics, decoration.text().getString(), decoration.x(), decoration.y() + graphics.getFontMetrics().getAscent(), decoration.width(), applyAlpha(colorFor(decoration.kind()), textAlpha), decoration.kind(), textAlpha, 0, 0.0f);
             case BookPageElement.InteractiveTextElement interactive ->
                     renderInteractiveTextElementToGraphics2D(graphics, interactive, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(interactive));
-            case BookPageElement.BoxElement box -> {
-                graphics.setColor(new Color(applyAlpha(box.fillColor(), textAlpha), true));
-                graphics.fillRect(box.x(), box.y(), box.width(), box.height());
-                graphics.setColor(new Color(applyAlpha(box.borderColor(), textAlpha), true));
-                graphics.drawRect(box.x(), box.y(), Math.max(1, box.width() - 1), Math.max(1, box.height() - 1));
-            }
+            case BookPageElement.ButtonElement button ->
+                    renderButtonElementToGraphics2D(graphics, button, textAlpha, hoveredInteractiveElement != null && hoveredInteractiveElement.equals(button));
+            case BookPageElement.BoxElement box -> renderBox(graphics, box, textAlpha);
+            case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
             }
             case BookPageElement.WidgetElement widget ->
@@ -216,55 +219,105 @@ public final class PageCanvasRenderer {
     }
 
     private void renderInteractiveTextElement(GuiGraphics graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
-        int defaultInk = applyAlpha(colorFor(element.kind()), textAlpha);
+        boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
+        int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         graphics.drawString(font, element.text(), element.x(), element.y(), defaultInk, false);
+        if (titleLink) {
+            int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
+            graphics.drawString(font, "\u2058", element.x() - 6, element.y(), aura, false);
+            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), aura, false);
+        }
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            int underlineY = element.y() + Math.max(1, element.height() - 2);
-            int leftInset = Math.min(3, Math.max(1, element.width() / 8));
-            int rightInset = leftInset;
-            int underlineX0 = element.x() + leftInset;
-            int underlineX1 = element.x() + element.width() - rightInset;
-
             graphics.drawString(font, element.text(), element.x(), element.y(), ink, false);
-            if (underlineX1 > underlineX0) {
-                graphics.fill(underlineX0, underlineY, underlineX1, underlineY + 1, ink);
+            if (titleLink) {
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(0, element.y() - 6), support, false);
+            } else {
+                int underlineY = element.y() + Math.max(1, element.height() - 2);
+                int leftInset = Math.min(3, Math.max(1, element.width() / 8));
+                int rightInset = leftInset;
+                int underlineX0 = element.x() + leftInset;
+                int underlineX1 = element.x() + element.width() - rightInset;
+                if (underlineX1 > underlineX0) {
+                    graphics.fill(underlineX0, underlineY, underlineX1, underlineY + 1, ink);
+                }
+                if (underlineX1 - underlineX0 > 6) {
+                    graphics.fill(underlineX0 + 2, underlineY + 2, underlineX1 - 2, underlineY + 3, support);
+                }
+                graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), support, false);
+                graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y(), underlineY - 5), support, false);
             }
-            if (underlineX1 - underlineX0 > 6) {
-                graphics.fill(underlineX0 + 2, underlineY + 2, underlineX1 - 2, underlineY + 3, support);
-            }
-            graphics.drawString(font, "\u2058", element.x() + element.width() + 2, element.y(), support, false);
-            graphics.drawString(font, "\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y(), underlineY - 5), support, false);
+        }
+    }
+
+    private void renderButtonElement(GuiGraphics graphics, BookPageElement.ButtonElement element, float textAlpha, boolean hovered) {
+        int fill = applyAlpha(hovered ? 0xB09A7B4A : 0x906E5635, textAlpha);
+        int border = applyAlpha(hovered ? 0xFFE6D3A1 : 0xD7C08C5D, textAlpha);
+        int inner = applyAlpha(hovered ? 0x28FFF3D0 : 0x18120F0A, textAlpha);
+        int accentColor = applyAlpha(hovered ? 0xFFE8DBB8 : 0xBDAF8A63, textAlpha);
+        int labelColor = applyAlpha(hovered ? 0xFFFFF5D8 : 0xFFE8D6B7, textAlpha);
+        graphics.fill(element.x(), element.y(), element.x() + element.width(), element.y() + element.height(), fill);
+        graphics.fill(element.x() + 1, element.y() + 1, element.x() + element.width() - 1, element.y() + element.height() - 1, inner);
+        graphics.fill(element.x(), element.y(), element.x() + element.width(), element.y() + 1, border);
+        graphics.fill(element.x(), element.y() + element.height() - 1, element.x() + element.width(), element.y() + element.height(), border);
+        graphics.fill(element.x(), element.y(), element.x() + 1, element.y() + element.height(), border);
+        graphics.fill(element.x() + element.width() - 1, element.y(), element.x() + element.width(), element.y() + element.height(), border);
+        String accent = "\u2058";
+        int accentWidth = font.width(accent);
+        int textWidth = font.width(element.label());
+        int spacing = 3;
+        int clusterWidth = textWidth + (accentWidth * 2) + (spacing * 2);
+        boolean drawAccents = clusterWidth + 4 <= element.width();
+        int textY = element.y() + Math.max(0, (element.height() - font.lineHeight) / 2);
+        if (drawAccents) {
+            int clusterX = element.x() + Math.max(0, (element.width() - clusterWidth) / 2);
+            graphics.drawString(font, accent, clusterX, textY, accentColor, false);
+            graphics.drawString(font, element.label(), clusterX + accentWidth + spacing, textY, labelColor, false);
+            graphics.drawString(font, accent, clusterX + accentWidth + spacing + textWidth + spacing, textY, accentColor, false);
+        } else {
+            int textX = element.x() + Math.max(0, (element.width() - textWidth) / 2);
+            graphics.drawString(font, element.label(), textX, textY, labelColor, false);
         }
     }
 
     private void renderInteractiveTextElementToGraphics2D(Graphics2D graphics, BookPageElement.InteractiveTextElement element, float textAlpha, boolean hovered) {
-        int defaultInk = applyAlpha(colorFor(element.kind()), textAlpha);
+        boolean titleLink = element.kind() == BookTextBlock.Kind.TITLE;
+        int defaultInk = applyAlpha(titleLink ? 0xFF6C49CC : colorFor(element.kind()), textAlpha);
         int baselineY = element.y() + graphics.getFontMetrics().getAscent();
         graphics.setColor(new Color(defaultInk, true));
         graphics.drawString(element.text().getString(), element.x(), baselineY);
+        if (titleLink) {
+            int aura = applyAlpha(hovered ? 0xC9E9D9FF : 0x88C8B4FF, textAlpha);
+            graphics.setColor(new Color(aura, true));
+            graphics.drawString("\u2058", element.x() - 6, baselineY);
+            graphics.drawString("\u2058", element.x() + element.width() + 2, baselineY);
+        }
         if (hovered) {
             int ink = applyAlpha(0xFF6C49CC, textAlpha);
             int support = applyAlpha(0xB0D7C89E, textAlpha);
-            int underlineY = element.y() + Math.max(1, element.height() - 2);
-            int leftInset = Math.min(3, Math.max(1, element.width() / 8));
-            int rightInset = leftInset;
-            int underlineX0 = element.x() + leftInset;
-            int underlineX1 = element.x() + element.width() - rightInset;
-
             graphics.setColor(new Color(ink, true));
             graphics.drawString(element.text().getString(), element.x(), baselineY);
-            if (underlineX1 > underlineX0) {
-                graphics.fillRect(underlineX0, underlineY, underlineX1 - underlineX0, 1);
-            }
-            if (underlineX1 - underlineX0 > 6) {
+            if (titleLink) {
                 graphics.setColor(new Color(support, true));
-                graphics.fillRect(underlineX0 + 2, underlineY + 2, Math.max(1, (underlineX1 - underlineX0) - 4), 1);
+                graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(graphics.getFontMetrics().getAscent(), baselineY - 6));
+            } else {
+                int underlineY = element.y() + Math.max(1, element.height() - 2);
+                int leftInset = Math.min(3, Math.max(1, element.width() / 8));
+                int rightInset = leftInset;
+                int underlineX0 = element.x() + leftInset;
+                int underlineX1 = element.x() + element.width() - rightInset;
+                if (underlineX1 > underlineX0) {
+                    graphics.fillRect(underlineX0, underlineY, underlineX1 - underlineX0, 1);
+                }
+                if (underlineX1 - underlineX0 > 6) {
+                    graphics.setColor(new Color(support, true));
+                    graphics.fillRect(underlineX0 + 2, underlineY + 2, Math.max(1, (underlineX1 - underlineX0) - 4), 1);
+                }
+                graphics.setColor(new Color(support, true));
+                graphics.drawString("\u2058", element.x() + element.width() + 2, baselineY);
+                graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y() + graphics.getFontMetrics().getAscent() - 3, underlineY - 2));
             }
-            graphics.setColor(new Color(support, true));
-            graphics.drawString("\u2058", element.x() + element.width() + 2, baselineY);
-            graphics.drawString("\u2058", element.x() + Math.max(0, (element.width() / 2) - 2), Math.max(element.y() + graphics.getFontMetrics().getAscent() - 3, underlineY - 2));
         }
         if (DEBUG_INTERACTIVE_TEXT_BOUNDS) {
             graphics.setColor(new Color(hovered ? 0xCCAA33FF : 0xAA33CC66, true));
@@ -272,12 +325,132 @@ public final class PageCanvasRenderer {
         }
     }
 
+    private void renderButtonElementToGraphics2D(Graphics2D graphics, BookPageElement.ButtonElement element, float textAlpha, boolean hovered) {
+        int fill = applyAlpha(hovered ? 0xB09A7B4A : 0x906E5635, textAlpha);
+        int border = applyAlpha(hovered ? 0xFFE6D3A1 : 0xD7C08C5D, textAlpha);
+        int inner = applyAlpha(hovered ? 0x28FFF3D0 : 0x18120F0A, textAlpha);
+        int accentColor = applyAlpha(hovered ? 0xFFE8DBB8 : 0xBDAF8A63, textAlpha);
+        int labelColor = applyAlpha(hovered ? 0xFFFFF5D8 : 0xFFE8D6B7, textAlpha);
+        graphics.setColor(new Color(fill, true));
+        graphics.fillRect(element.x(), element.y(), element.width(), element.height());
+        graphics.setColor(new Color(inner, true));
+        graphics.fillRect(element.x() + 1, element.y() + 1, Math.max(1, element.width() - 2), Math.max(1, element.height() - 2));
+        graphics.setColor(new Color(border, true));
+        graphics.drawRect(element.x(), element.y(), Math.max(1, element.width() - 1), Math.max(1, element.height() - 1));
+        java.awt.FontMetrics metrics = graphics.getFontMetrics();
+        int baselineY = element.y() + ((element.height() - metrics.getHeight()) / 2) + metrics.getAscent();
+        String accent = "\u2058";
+        int accentWidth = metrics.stringWidth(accent);
+        int textWidth = metrics.stringWidth(element.label().getString());
+        int spacing = 3;
+        int clusterWidth = textWidth + (accentWidth * 2) + (spacing * 2);
+        boolean drawAccents = clusterWidth + 4 <= element.width();
+        if (drawAccents) {
+            int clusterX = element.x() + Math.max(0, (element.width() - clusterWidth) / 2);
+            graphics.setColor(new Color(accentColor, true));
+            graphics.drawString(accent, clusterX, baselineY);
+            graphics.setColor(new Color(labelColor, true));
+            graphics.drawString(element.label().getString(), clusterX + accentWidth + spacing, baselineY);
+            graphics.setColor(new Color(accentColor, true));
+            graphics.drawString(accent, clusterX + accentWidth + spacing + textWidth + spacing, baselineY);
+        } else {
+            int textX = element.x() + Math.max(0, (element.width() - textWidth) / 2);
+            graphics.setColor(new Color(labelColor, true));
+            graphics.drawString(element.label().getString(), textX, baselineY);
+        }
+    }
+
     private void renderBox(GuiGraphics graphics, BookPageElement.BoxElement box, float textAlpha) {
-        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + box.height(), applyAlpha(box.fillColor(), textAlpha));
-        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + 1, applyAlpha(box.borderColor(), textAlpha));
-        graphics.fill(box.x(), box.y() + box.height() - 1, box.x() + box.width(), box.y() + box.height(), applyAlpha(box.borderColor(), textAlpha));
-        graphics.fill(box.x(), box.y(), box.x() + 1, box.y() + box.height(), applyAlpha(box.borderColor(), textAlpha));
-        graphics.fill(box.x() + box.width() - 1, box.y(), box.x() + box.width(), box.y() + box.height(), applyAlpha(box.borderColor(), textAlpha));
+        int fill = applyAlpha(box.fillColor(), textAlpha);
+        int border = applyAlpha(box.borderColor(), textAlpha);
+        int inset = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x30FFF1D4 : 0x22FFF6E3, textAlpha);
+        int topGlow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x7AD8BC84 : 0x4CCBAE74, textAlpha);
+        int shadow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x18000000 : 0x10000000, textAlpha);
+        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + box.height(), fill);
+        if (box.width() > 2 && box.height() > 2) {
+            graphics.fill(box.x() + 1, box.y() + 1, box.x() + box.width() - 1, box.y() + box.height() - 1, inset);
+        }
+        if (box.width() > 4 && box.height() > 4) {
+            graphics.fill(box.x() + 2, box.y() + box.height() - 3, box.x() + box.width() - 2, box.y() + box.height() - 2, shadow);
+        }
+        graphics.fill(box.x(), box.y(), box.x() + box.width(), box.y() + 1, border);
+        graphics.fill(box.x(), box.y() + box.height() - 1, box.x() + box.width(), box.y() + box.height(), border);
+        graphics.fill(box.x(), box.y(), box.x() + 1, box.y() + box.height(), border);
+        graphics.fill(box.x() + box.width() - 1, box.y(), box.x() + box.width(), box.y() + box.height(), border);
+        if (box.width() > 8) {
+            graphics.fill(box.x() + 3, box.y() + 2, box.x() + box.width() - 3, box.y() + 3, topGlow);
+        }
+    }
+
+    private void renderBox(Graphics2D graphics, BookPageElement.BoxElement box, float textAlpha) {
+        int fill = applyAlpha(box.fillColor(), textAlpha);
+        int border = applyAlpha(box.borderColor(), textAlpha);
+        int inset = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x30FFF1D4 : 0x22FFF6E3, textAlpha);
+        int topGlow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x7AD8BC84 : 0x4CCBAE74, textAlpha);
+        int shadow = applyAlpha(box.visualStyle() == BookPageElement.PanelVisualStyle.EMPHASIS ? 0x18000000 : 0x10000000, textAlpha);
+        graphics.setColor(new Color(fill, true));
+        graphics.fillRect(box.x(), box.y(), box.width(), box.height());
+        if (box.width() > 2 && box.height() > 2) {
+            graphics.setColor(new Color(inset, true));
+            graphics.fillRect(box.x() + 1, box.y() + 1, Math.max(1, box.width() - 2), Math.max(1, box.height() - 2));
+        }
+        if (box.width() > 4 && box.height() > 4) {
+            graphics.setColor(new Color(shadow, true));
+            graphics.fillRect(box.x() + 2, box.y() + box.height() - 3, Math.max(1, box.width() - 4), 1);
+        }
+        graphics.setColor(new Color(border, true));
+        graphics.drawRect(box.x(), box.y(), Math.max(1, box.width() - 1), Math.max(1, box.height() - 1));
+        if (box.width() > 8) {
+            graphics.setColor(new Color(topGlow, true));
+            graphics.fillRect(box.x() + 3, box.y() + 2, Math.max(1, box.width() - 6), 1);
+        }
+    }
+
+    private void renderProgressBar(GuiGraphics graphics, BookPageElement.ProgressBarElement progressBar, float textAlpha) {
+        int track = applyAlpha(progressBar.trackColor(), textAlpha);
+        int fill = applyAlpha(progressBar.fillColor(), textAlpha);
+        int border = applyAlpha(progressBar.borderColor(), textAlpha);
+        int highlight = applyAlpha(0x55FFF0C9, textAlpha);
+        graphics.fill(progressBar.x(), progressBar.y(), progressBar.x() + progressBar.width(), progressBar.y() + progressBar.height(), track);
+        int innerX = progressBar.x() + 1;
+        int innerY = progressBar.y() + 1;
+        int innerWidth = Math.max(1, progressBar.width() - 2);
+        int innerHeight = Math.max(1, progressBar.height() - 2);
+        int fillWidth = Math.max(0, Math.min(innerWidth, Math.round(innerWidth * progressBar.progress())));
+        if (fillWidth > 0) {
+            graphics.fill(innerX, innerY, innerX + fillWidth, innerY + innerHeight, fill);
+            if (fillWidth > 4) {
+                graphics.fill(innerX + 1, innerY + 1, innerX + fillWidth - 1, innerY + 2, highlight);
+            }
+        }
+        graphics.fill(progressBar.x(), progressBar.y(), progressBar.x() + progressBar.width(), progressBar.y() + 1, border);
+        graphics.fill(progressBar.x(), progressBar.y() + progressBar.height() - 1, progressBar.x() + progressBar.width(), progressBar.y() + progressBar.height(), border);
+        graphics.fill(progressBar.x(), progressBar.y(), progressBar.x() + 1, progressBar.y() + progressBar.height(), border);
+        graphics.fill(progressBar.x() + progressBar.width() - 1, progressBar.y(), progressBar.x() + progressBar.width(), progressBar.y() + progressBar.height(), border);
+    }
+
+    private void renderProgressBar(Graphics2D graphics, BookPageElement.ProgressBarElement progressBar, float textAlpha) {
+        int track = applyAlpha(progressBar.trackColor(), textAlpha);
+        int fill = applyAlpha(progressBar.fillColor(), textAlpha);
+        int border = applyAlpha(progressBar.borderColor(), textAlpha);
+        int highlight = applyAlpha(0x55FFF0C9, textAlpha);
+        graphics.setColor(new Color(track, true));
+        graphics.fillRect(progressBar.x(), progressBar.y(), progressBar.width(), progressBar.height());
+        int innerX = progressBar.x() + 1;
+        int innerY = progressBar.y() + 1;
+        int innerWidth = Math.max(1, progressBar.width() - 2);
+        int innerHeight = Math.max(1, progressBar.height() - 2);
+        int fillWidth = Math.max(0, Math.min(innerWidth, Math.round(innerWidth * progressBar.progress())));
+        if (fillWidth > 0) {
+            graphics.setColor(new Color(fill, true));
+            graphics.fillRect(innerX, innerY, fillWidth, innerHeight);
+            if (fillWidth > 4) {
+                graphics.setColor(new Color(highlight, true));
+                graphics.fillRect(innerX + 1, innerY + 1, Math.max(1, fillWidth - 2), 1);
+            }
+        }
+        graphics.setColor(new Color(border, true));
+        graphics.drawRect(progressBar.x(), progressBar.y(), Math.max(1, progressBar.width() - 1), Math.max(1, progressBar.height() - 1));
     }
 
     private RenderResult renderBlockToGraphics2D(Graphics2D graphics, BookTextBlock block, int x, int y, int width, int bottomY, float textAlpha) {

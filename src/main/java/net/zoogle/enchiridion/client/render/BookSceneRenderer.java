@@ -46,7 +46,7 @@ public final class BookSceneRenderer {
     private static final float BOOK_PIVOT_Z = 1.5f;
     private static final float PAGE_SURFACE_DEPTH = 0.05f;
 
-    private static final GeoObjectRenderer<EnchiridionBookAnimatable> BOOK_RENDERER = new EnchiridionBookRenderer();
+    private static final EnchiridionBookRenderer BOOK_RENDERER = new EnchiridionBookRenderer();
     private final EnchiridionBookAnimatable bookAnimatable = new EnchiridionBookAnimatable();
     private final BookPageTexturePipeline pageTexturePipeline = new BookPageTexturePipeline();
     private float currentTiltYaw;
@@ -152,16 +152,48 @@ public final class BookSceneRenderer {
             int localWidth,
             int localHeight
     ) {
-        PageSurfaceBounds bounds = pageSurfaceBounds(layout, state, animationProgress, projectionProgress, projectionFocusOffset, pageSide);
-        ScreenPoint topLeft = projectPagePoint(bounds, localX, localY);
-        ScreenPoint topRight = projectPagePoint(bounds, localX + localWidth, localY);
-        ScreenPoint bottomRight = projectPagePoint(bounds, localX + localWidth, localY + localHeight);
-        ScreenPoint bottomLeft = projectPagePoint(bounds, localX, localY + localHeight);
+        ScreenQuad quad = projectPageQuad(
+                layout,
+                state,
+                animationProgress,
+                projectionProgress,
+                projectionFocusOffset,
+                pageSide,
+                localX,
+                localY,
+                localWidth,
+                localHeight
+        );
+        ScreenPoint topLeft = quad.topLeft();
+        ScreenPoint topRight = quad.topRight();
+        ScreenPoint bottomRight = quad.bottomRight();
+        ScreenPoint bottomLeft = quad.bottomLeft();
         float left = min(topLeft.x(), topRight.x(), bottomRight.x(), bottomLeft.x());
         float top = min(topLeft.y(), topRight.y(), bottomRight.y(), bottomLeft.y());
         float right = max(topLeft.x(), topRight.x(), bottomRight.x(), bottomLeft.x());
         float bottom = max(topLeft.y(), topRight.y(), bottomRight.y(), bottomLeft.y());
         return new ScreenRect(left, top, Math.max(1.0f, right - left), Math.max(1.0f, bottom - top));
+    }
+
+    public ScreenQuad projectPageQuad(
+            BookLayout layout,
+            BookAnimState state,
+            float animationProgress,
+            float projectionProgress,
+            float projectionFocusOffset,
+            BookPageSide pageSide,
+            int localX,
+            int localY,
+            int localWidth,
+            int localHeight
+    ) {
+        PageSurfaceBounds bounds = pageSurfaceBounds(layout, state, animationProgress, projectionProgress, projectionFocusOffset, pageSide);
+        return new ScreenQuad(
+                projectPagePoint(bounds, localX, localY),
+                projectPagePoint(bounds, localX + localWidth, localY),
+                projectPagePoint(bounds, localX + localWidth, localY + localHeight),
+                projectPagePoint(bounds, localX, localY + localHeight)
+        );
     }
 
     public void renderBook(
@@ -174,8 +206,8 @@ public final class BookSceneRenderer {
             float projectionProgress,
             float projectionFocusOffset,
             BookPageSide focusedPageSide,
-            BookPageElement.InteractiveTextElement leftHoveredInteractiveElement,
-            BookPageElement.InteractiveTextElement rightHoveredInteractiveElement,
+            BookPageElement.InteractiveElement leftHoveredInteractiveElement,
+            BookPageElement.InteractiveElement rightHoveredInteractiveElement,
             int mouseX,
             int mouseY,
             float textAlpha,
@@ -196,7 +228,6 @@ public final class BookSceneRenderer {
         bookAnimatable.setAnimState(state);
         bookAnimatable.setTextureLocation(textures.baseTexture());
         bookAnimatable.setMagicTextTextureLocations(textures.magicLeftTexture(), textures.magicRightTexture());
-        preparePresentation(layout, state, animationProgress, projectionProgress, mouseX, mouseY, closedHovered, inspectYaw, inspectPitch);
         PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, inspectYaw);
 
         graphics.flush();
@@ -295,6 +326,26 @@ public final class BookSceneRenderer {
             float projectionFocusOffset,
             BookPageSide pageSide
     ) {
+        EnchiridionBookRenderer.CapturedPageSurface captured = BOOK_RENDERER.capturedPageSurface(pageSide);
+        if (captured != null) {
+            float left = min(captured.topLeft().x(), captured.topRight().x(), captured.bottomRight().x(), captured.bottomLeft().x());
+            float top = min(captured.topLeft().y(), captured.topRight().y(), captured.bottomRight().y(), captured.bottomLeft().y());
+            float right = max(captured.topLeft().x(), captured.topRight().x(), captured.bottomRight().x(), captured.bottomLeft().x());
+            float bottom = max(captured.topLeft().y(), captured.topRight().y(), captured.bottomRight().y(), captured.bottomLeft().y());
+            return new PageSurfaceBounds(
+                    pageSide,
+                    captured.topLeft(),
+                    captured.topRight(),
+                    captured.bottomRight(),
+                    captured.bottomLeft(),
+                    left,
+                    top,
+                    Math.max(1.0f, right - left),
+                    Math.max(1.0f, bottom - top),
+                    captured.localWidth(),
+                    captured.localHeight()
+            );
+        }
         BookPageTexturePipeline.RenderRegionSize renderRegion = BookPageTexturePipeline.renderRegionSize(pageSide);
         float pageWidth = renderRegion.width();
         float pageHeight = renderRegion.height();
@@ -341,7 +392,7 @@ public final class BookSceneRenderer {
         point.rotateX((float) Math.toRadians(presentation.inspectPitch()));
         point.rotateX((float) Math.toRadians(currentTiltPitch));
         point.rotateY((float) Math.toRadians(currentTiltYaw));
-        float perspective = perspectiveScale(point.z);
+        float perspective = perspectiveScale(GUI_Z + point.z);
         return new ScreenPoint(
                 presentation.centerX() + (point.x * perspective),
                 presentation.centerY() + (point.y * perspective)
@@ -486,6 +537,13 @@ public final class BookSceneRenderer {
     public record PageLocalPoint(PageSurfaceBounds bounds, float localX, float localY) {}
 
     public record ScreenRect(float x, float y, float width, float height) {}
+
+    public record ScreenQuad(
+            ScreenPoint topLeft,
+            ScreenPoint topRight,
+            ScreenPoint bottomRight,
+            ScreenPoint bottomLeft
+    ) {}
 
     public record ScreenPoint(float x, float y) {}
 

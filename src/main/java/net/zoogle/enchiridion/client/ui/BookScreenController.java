@@ -8,24 +8,21 @@ import net.zoogle.enchiridion.client.anim.BookAnimController;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
 import org.jetbrains.annotations.Nullable;
 
-public final class BookScreenController {
-    private static final int PROJECTION_TRANSITION_TICKS = 6;
-
+public final class BookScreenController implements BookProjectionController.ProjectionSpreadNavigator {
     private final BookDefinition definition;
     private final BookContext context;
     private final BookAnimController animController = new BookAnimController();
+    private final BookProjectionController projectionController;
 
     private final int maxSpreadIndex;
     private BookSpread currentSpread;
-    private ProjectionMode projectionMode = ProjectionMode.JOURNAL_READING;
-    private String selectedProjectionId;
-    private int projectionTransitionTicks;
 
     public BookScreenController(BookDefinition definition, BookContext context) {
         this.definition = definition;
         this.context = context;
         this.maxSpreadIndex = Math.max(0, definition.provider().spreadCount(context) - 1);
         this.currentSpread = definition.provider().getSpread(context, 0);
+        this.projectionController = new BookProjectionController(definition, context, maxSpreadIndex);
         this.animController.beginArrival();
     }
 
@@ -35,18 +32,7 @@ public final class BookScreenController {
         if (animController.getCurrentSpread() != before) {
             reloadSpread();
         }
-        if (projectionMode == ProjectionMode.SKILL_PROJECTION_TRANSITION) {
-            projectionTransitionTicks = Math.min(PROJECTION_TRANSITION_TICKS, projectionTransitionTicks + 1);
-            if (projectionTransitionTicks >= PROJECTION_TRANSITION_TICKS) {
-                projectionMode = ProjectionMode.SKILL_PROJECTION_ACTIVE;
-            }
-        } else if (projectionMode == ProjectionMode.SKILL_PROJECTION_EXITING) {
-            projectionTransitionTicks = Math.max(0, projectionTransitionTicks - 1);
-            if (projectionTransitionTicks <= 0) {
-                projectionMode = ProjectionMode.JOURNAL_READING;
-                selectedProjectionId = null;
-            }
-        }
+        projectionController.tick();
     }
 
     public void nextPage() {
@@ -166,115 +152,75 @@ public final class BookScreenController {
     }
 
     public boolean beginProjection(String focusId) {
-        if (!isOpenReadable() || focusId == null || focusId.isBlank()) {
-            return false;
-        }
-        BookProjectionView projection = definition.provider().projection(context, focusId);
-        if (projection == null) {
-            return false;
-        }
-        selectedProjectionId = focusId;
-        projectionMode = ProjectionMode.SKILL_PROJECTION_TRANSITION;
-        projectionTransitionTicks = 0;
-        return true;
+        return projectionController.beginProjection(isOpenReadable(), focusId);
     }
 
     public boolean closeProjection() {
-        if (!isProjectionVisible()) {
-            return false;
-        }
-        projectionMode = ProjectionMode.SKILL_PROJECTION_EXITING;
-        projectionTransitionTicks = Math.min(PROJECTION_TRANSITION_TICKS, Math.max(1, projectionTransitionTicks));
-        return true;
+        return projectionController.closeProjection();
     }
 
     public boolean nextProjectionFocus() {
-        if (!isProjectionVisible() || selectedProjectionId == null || selectedProjectionId.isBlank()) {
-            return false;
-        }
-        String nextFocus = definition.provider().nextProjectionFocus(context, selectedProjectionId);
-        return switchProjectionFocus(nextFocus, true);
+        return projectionController.nextProjectionFocus(this);
     }
 
     public boolean previousProjectionFocus() {
-        if (!isProjectionVisible() || selectedProjectionId == null || selectedProjectionId.isBlank()) {
-            return false;
-        }
-        String previousFocus = definition.provider().previousProjectionFocus(context, selectedProjectionId);
-        return switchProjectionFocus(previousFocus, false);
+        return projectionController.previousProjectionFocus(this);
     }
 
     public boolean isProjectionVisible() {
-        return projectionMode != ProjectionMode.JOURNAL_READING;
+        return projectionController.isProjectionVisible();
     }
 
     public boolean isProjectionInteractive() {
-        return projectionMode == ProjectionMode.SKILL_PROJECTION_ACTIVE;
+        return projectionController.isProjectionInteractive();
     }
 
-    public ProjectionMode projectionMode() {
-        return projectionMode;
+    public BookProjectionController.ProjectionMode projectionMode() {
+        return projectionController.projectionMode();
     }
 
     public float projectionProgress() {
-        return switch (projectionMode) {
-            case JOURNAL_READING -> 0.0f;
-            case SKILL_PROJECTION_TRANSITION -> projectionTransitionTicks / (float) PROJECTION_TRANSITION_TICKS;
-            case SKILL_PROJECTION_EXITING -> projectionTransitionTicks / (float) PROJECTION_TRANSITION_TICKS;
-            case SKILL_PROJECTION_ACTIVE -> 1.0f;
-        };
+        return projectionController.projectionProgress();
     }
 
     public @Nullable String selectedProjectionId() {
-        return selectedProjectionId;
+        return projectionController.selectedProjectionId();
     }
 
     public @Nullable BookProjectionView projectionView() {
-        if (!isProjectionVisible() || selectedProjectionId == null || selectedProjectionId.isBlank()) {
-            return null;
-        }
-        return definition.provider().projection(context, selectedProjectionId);
+        return projectionController.projectionView();
     }
 
     public int selectedProjectionPageIndex() {
-        if (!isProjectionVisible() || selectedProjectionId == null || selectedProjectionId.isBlank()) {
-            return -1;
-        }
-        return definition.provider().pageIndexForProjectionFocus(context, selectedProjectionId);
+        return projectionController.selectedProjectionPageIndex();
     }
 
-    private boolean switchProjectionFocus(@Nullable String nextFocusId, boolean forward) {
-        if (nextFocusId == null || nextFocusId.isBlank() || nextFocusId.equals(selectedProjectionId)) {
-            return false;
-        }
-        int currentSpread = animController.getCurrentSpread();
-        int targetSpread = definition.provider().spreadForProjectionFocus(context, nextFocusId);
-        if (targetSpread >= 0 && targetSpread != currentSpread) {
-            boolean adjacentSpread = Math.abs(targetSpread - currentSpread) == 1;
-            boolean changed = adjacentSpread
-                    ? (forward ? animController.requestNextSpread(maxSpreadIndex) : animController.requestPreviousSpread())
-                    : animController.requestDirectedRiffleToSpread(targetSpread, maxSpreadIndex, !forward);
-            if (!changed) {
-                return false;
-            }
-        }
-        selectedProjectionId = nextFocusId;
-        projectionMode = ProjectionMode.SKILL_PROJECTION_ACTIVE;
-        projectionTransitionTicks = PROJECTION_TRANSITION_TICKS;
-        if (targetSpread == currentSpread || targetSpread < 0) {
-            reloadSpread();
-        }
-        return true;
-    }
-
-    private void reloadSpread() {
+    void reloadSpread() {
         currentSpread = definition.provider().getSpread(context, animController.getCurrentSpread());
     }
 
-    public enum ProjectionMode {
-        JOURNAL_READING,
-        SKILL_PROJECTION_TRANSITION,
-        SKILL_PROJECTION_ACTIVE,
-        SKILL_PROJECTION_EXITING
+    @Override
+    public int currentSpreadIndex() {
+        return animController.getCurrentSpread();
+    }
+
+    @Override
+    public boolean requestNextSpread(int maxSpreadIndex) {
+        return animController.requestNextSpread(maxSpreadIndex);
+    }
+
+    @Override
+    public boolean requestPreviousSpread() {
+        return animController.requestPreviousSpread();
+    }
+
+    @Override
+    public boolean requestDirectedRiffleToSpread(int targetSpread, int maxSpreadIndex, boolean reverseDirection) {
+        return animController.requestDirectedRiffleToSpread(targetSpread, maxSpreadIndex, reverseDirection);
+    }
+
+    @Override
+    public void reloadCurrentSpread() {
+        reloadSpread();
     }
 }

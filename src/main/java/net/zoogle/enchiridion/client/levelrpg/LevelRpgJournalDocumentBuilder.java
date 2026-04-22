@@ -18,24 +18,28 @@ final class LevelRpgJournalDocumentBuilder {
         List<BookPage> pages = new ArrayList<>();
         Map<Integer, List<BookInteractiveRegion>> pageRegions = new LinkedHashMap<>();
 
-        List<BookPage> introPages = LevelRpgJournalBookProvider.buildLegacyOpeningPages(context);
+        List<BookPage> introPages = LevelRpgJournalComposer.buildLegacyOpeningPages(context);
         List<NamedSectionLayout> skillSections = new ArrayList<>();
         for (JournalSkillEntry skill : snapshot.skills()) {
-            skillSections.add(new NamedSectionLayout(skill.name(), LevelRpgJournalBookProvider.buildSkillPages(skill)));
+            skillSections.add(new NamedSectionLayout(skill.name(), LevelRpgJournalComposer.buildSkillPages(skill)));
         }
 
-        List<BookPage> identityPages = LevelRpgJournalBookProvider.buildIdentityPages(snapshot.characterSheet());
+        List<BookPage> identityPages = LevelRpgJournalComposer.buildIdentityPages(snapshot.characterSheet());
         int characterPageStart = introPages.size();
         Map<String, Integer> skillStartPages = new LinkedHashMap<>();
         int nextPageStart = characterPageStart
                 + identityPages.size()
-                + LevelRpgJournalBookProvider.ledgerPageCount(snapshot.characterSheet().stats());
+                + LevelRpgJournalComposer.ledgerPageCount(snapshot.characterSheet().stats());
         for (NamedSectionLayout skillSection : skillSections) {
             skillStartPages.put(skillSection.label(), nextPageStart);
             nextPageStart += skillSection.pages().size();
         }
 
-        List<BookPage> ledgerPages = LevelRpgJournalBookProvider.buildLedgerPages(snapshot.characterSheet().stats(), skillStartPages);
+        List<BookPage> ledgerPages = LevelRpgJournalComposer.buildLedgerPages(
+                snapshot.characterSheet().stats(),
+                skillStartPages,
+                characterPageStart + identityPages.size()
+        );
 
         pages.addAll(introPages);
         pages.addAll(identityPages);

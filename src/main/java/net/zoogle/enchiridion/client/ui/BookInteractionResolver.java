@@ -36,47 +36,47 @@ final class BookInteractionResolver {
         return new Resolution(hoveredTarget, targets, debugState);
     }
 
-    BookPageElement.InteractiveTextElement hoveredInteractiveElement(Resolution resolution, BookSpread spread, BookPageSide pageSide) {
-        if (resolution.hoveredTarget() == null || resolution.hoveredTarget().role() != InteractiveVisualRole.MANUSCRIPT_LINK) {
+    BookPageElement.InteractiveElement hoveredInteractiveElement(Resolution resolution, BookSpread spread, BookPageSide pageSide) {
+        if (resolution.hoveredTarget() == null || resolution.hoveredTarget().interactiveElement() == null) {
             return null;
         }
-        BookPageElement.InteractiveTextElement text = resolution.hoveredTarget().textElement();
-        return text != null && pageSideFor(spread, text) == pageSide ? text : null;
+        BookPageElement.InteractiveElement interactiveElement = resolution.hoveredTarget().interactiveElement();
+        return pageSideFor(spread, interactiveElement) == pageSide ? interactiveElement : null;
     }
 
-    List<BookPageElement.InteractiveTextElement> pageInteractiveElements(BookSpread spread) {
+    List<BookPageElement.InteractiveElement> pageInteractiveElements(BookSpread spread) {
         if (spread == null) {
             return List.of();
         }
-        List<BookPageElement.InteractiveTextElement> elements = new ArrayList<>();
+        List<BookPageElement.InteractiveElement> elements = new ArrayList<>();
         for (BookPageElement element : spread.left().elements()) {
-            if (element instanceof BookPageElement.InteractiveTextElement interactive) {
+            if (element instanceof BookPageElement.InteractiveElement interactive) {
                 elements.add(interactive);
             }
         }
         for (BookPageElement element : spread.right().elements()) {
-            if (element instanceof BookPageElement.InteractiveTextElement interactive) {
+            if (element instanceof BookPageElement.InteractiveElement interactive) {
                 elements.add(interactive);
             }
         }
         return elements;
     }
 
-    List<BookPageElement.InteractiveTextElement> interactiveTextElementsFor(BookSpread spread, BookPageSide pageSide) {
+    List<BookPageElement.InteractiveElement> interactiveElementsFor(BookSpread spread, BookPageSide pageSide) {
         if (spread == null) {
             return List.of();
         }
         List<BookPageElement> elements = pageSide == BookPageSide.LEFT ? spread.left().elements() : spread.right().elements();
-        List<BookPageElement.InteractiveTextElement> interactive = new ArrayList<>();
+        List<BookPageElement.InteractiveElement> interactive = new ArrayList<>();
         for (BookPageElement element : elements) {
-            if (element instanceof BookPageElement.InteractiveTextElement text) {
+            if (element instanceof BookPageElement.InteractiveElement text) {
                 interactive.add(text);
             }
         }
         return interactive;
     }
 
-    BookPageSide pageSideFor(BookSpread spread, BookPageElement.InteractiveTextElement element) {
+    BookPageSide pageSideFor(BookSpread spread, BookPageElement.InteractiveElement element) {
         if (spread == null) {
             return BookPageSide.LEFT;
         }
@@ -102,19 +102,19 @@ final class BookInteractionResolver {
             float projectionFocusOffset
     ) {
         List<ResolvedInteractiveTarget> resolved = new ArrayList<>();
-        for (BookPageElement.InteractiveTextElement text : pageInteractiveElements(displayedSpread)) {
-            BookPageSide pageSide = pageSideFor(displayedSpread, text);
+        for (BookPageElement.InteractiveElement interactiveElement : pageInteractiveElements(displayedSpread)) {
+            BookPageSide pageSide = pageSideFor(displayedSpread, interactiveElement);
             resolved.add(new ResolvedInteractiveTarget(
-                    targetId("text", pageSide, text.x(), text.y(), text.width(), text.height(), text.text().getString()),
+                    interactiveElement.stableId(),
                     pageSide,
-                    text.x(),
-                    text.y(),
-                    text.width(),
-                    text.height(),
-                    text.tooltip(),
-                    text.action(),
-                    InteractiveVisualRole.MANUSCRIPT_LINK,
-                    true,
+                    interactiveElement.x(),
+                    interactiveElement.y(),
+                    interactiveElement.width(),
+                    interactiveElement.height(),
+                    interactiveElement.tooltip(),
+                    interactiveElement.action(),
+                    roleFor(interactiveElement),
+                    interactiveElement.enabled(),
                     sceneRenderer.projectPageRect(
                             layout,
                             controller.visualState(),
@@ -122,12 +122,24 @@ final class BookInteractionResolver {
                             controller.projectionProgress(),
                             projectionFocusOffset,
                             pageSide,
-                            text.x(),
-                            text.y(),
-                            text.width(),
-                            text.height()
+                            interactiveElement.x(),
+                            interactiveElement.y(),
+                            interactiveElement.width(),
+                            interactiveElement.height()
                     ),
-                    text,
+                    sceneRenderer.projectPageQuad(
+                            layout,
+                            controller.visualState(),
+                            controller.animationProgress(),
+                            controller.projectionProgress(),
+                            projectionFocusOffset,
+                            pageSide,
+                            interactiveElement.x(),
+                            interactiveElement.y(),
+                            interactiveElement.width(),
+                            interactiveElement.height()
+                    ),
+                    interactiveElement,
                     null
             ));
         }
@@ -147,6 +159,18 @@ final class BookInteractionResolver {
                     role,
                     true,
                     sceneRenderer.projectPageRect(
+                        layout,
+                        controller.visualState(),
+                        controller.animationProgress(),
+                        controller.projectionProgress(),
+                        projectionFocusOffset,
+                        region.pageSide(),
+                        region.x(),
+                        region.y(),
+                        region.width(),
+                        region.height()
+                    ),
+                    sceneRenderer.projectPageQuad(
                         layout,
                         controller.visualState(),
                         controller.animationProgress(),
@@ -191,7 +215,8 @@ final class BookInteractionResolver {
             if (localPoint.localX() >= target.localX()
                     && localPoint.localX() < target.localX() + target.localWidth()
                     && localPoint.localY() >= target.localY()
-                    && localPoint.localY() < target.localY() + target.localHeight()) {
+                    && localPoint.localY() < target.localY() + target.localHeight()
+                    && target.enabled()) {
                 return target;
             }
         }
@@ -241,9 +266,9 @@ final class BookInteractionResolver {
                 mouseX,
                 mouseY
         );
-        BookPageElement.InteractiveTextElement containing = null;
+        BookPageElement.InteractiveElement containing = null;
         if (localPoint != null) {
-            for (BookPageElement.InteractiveTextElement text : interactiveTextElementsFor(displayedSpread, pageSide)) {
+            for (BookPageElement.InteractiveElement text : interactiveElementsFor(displayedSpread, pageSide)) {
                 if (localPoint.localX() >= text.x()
                         && localPoint.localX() < text.x() + text.width()
                         && localPoint.localY() >= text.y()
@@ -290,12 +315,14 @@ final class BookInteractionResolver {
             InteractiveVisualRole role,
             boolean enabled,
             BookSceneRenderer.ScreenRect screenRect,
-            BookPageElement.InteractiveTextElement textElement,
+            BookSceneRenderer.ScreenQuad screenQuad,
+            BookPageElement.InteractiveElement interactiveElement,
             BookInteractiveRegion region
     ) {}
 
     enum InteractiveVisualRole {
         MANUSCRIPT_LINK,
+        BUTTON,
         LABELED_ACTION,
         PAGE_REGION
     }
@@ -307,8 +334,15 @@ final class BookInteractionResolver {
             BookSceneRenderer.PageSurfaceBounds bounds,
             BookSceneRenderer.PageLocalPoint localPoint,
             BookSceneRenderer.ScreenPoint mouseProjection,
-            BookPageElement.InteractiveTextElement containingText
+            BookPageElement.InteractiveElement containingText
     ) {}
+
+    private static InteractiveVisualRole roleFor(BookPageElement.InteractiveElement interactiveElement) {
+        return switch (interactiveElement.visualStyle()) {
+            case MANUSCRIPT_LINK -> InteractiveVisualRole.MANUSCRIPT_LINK;
+            case BUTTON -> InteractiveVisualRole.BUTTON;
+        };
+    }
 
     private static String targetId(String prefix, BookPageSide side, int x, int y, int width, int height, String label) {
         return prefix + ":" + side + ":" + x + ":" + y + ":" + width + ":" + height + ":" + label;
