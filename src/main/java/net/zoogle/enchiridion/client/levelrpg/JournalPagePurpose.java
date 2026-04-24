@@ -5,5 +5,6 @@ enum JournalPagePurpose {
     CHARACTER_STANDING,
     LEDGER,
     SKILL_DETAIL,
-    FRONT_MATTER
+    FRONT_MATTER,
+    SYNTHETIC_EMPTY
 }

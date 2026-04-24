@@ -14,46 +14,59 @@ final class LevelRpgJournalDocumentBuilder {
     private LevelRpgJournalDocumentBuilder() {}
 
     static LevelRpgJournalDocument build(BookContext context) {
-        LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
-        List<BookPage> pages = new ArrayList<>();
-        Map<Integer, List<BookInteractiveRegion>> pageRegions = new LinkedHashMap<>();
-        Map<Integer, String> pagePurposes = new LinkedHashMap<>();
+        LevelRpgJournalIntroFlowState flow = LevelRpgJournalIntroFlowState.get();
+        flow.syncToTruth(context);
+        if (flow.isUnbound(context)) {
+            return buildUnboundDocument(context);
+        }
 
-        List<BookPage> introPages = LevelRpgJournalComposer.buildLegacyOpeningPages(context);
+        LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
+        List<LevelRpgJournalResolvedPage> pages = new ArrayList<>();
+
+        List<LevelRpgJournalResolvedPage> frontCoverPages = frontCoverPages(context);
         List<NamedSectionLayout> skillSections = new ArrayList<>();
 
-        int characterPageStart = introPages.size();
+        int characterPageStart = frontCoverPages.size();
         int firstLedgerPageIndex = characterPageStart + 2;
-        List<BookPage> identityPages = LevelRpgJournalComposer.buildIdentityPages(context, snapshot.characterSheet(), firstLedgerPageIndex);
+        List<BookPage> rawIdentityPages = LevelRpgJournalComposer.buildIdentityPages(context, snapshot.characterSheet(), firstLedgerPageIndex);
+        List<LevelRpgJournalResolvedPage> identityPages = List.of(
+                LevelRpgJournalResolvedPage.of(JournalPageIds.characterIdentity(), JournalPagePurpose.CHARACTER_IDENTITY, rawIdentityPages.get(0)),
+                LevelRpgJournalResolvedPage.of(JournalPageIds.characterStanding(), JournalPagePurpose.CHARACTER_STANDING, rawIdentityPages.get(1))
+        );
         Map<String, Integer> skillStartPages = new LinkedHashMap<>();
         int nextPageStart = characterPageStart
                 + identityPages.size()
                 + LevelRpgJournalComposer.ledgerPageCount(snapshot.characterSheet().stats());
+        List<JournalPageId> ledgerPageIds = new ArrayList<>();
+        for (int ledgerIndex = 0; ledgerIndex < LevelRpgJournalComposer.ledgerPageCount(snapshot.characterSheet().stats()); ledgerIndex++) {
+            ledgerPageIds.add(JournalPageIds.ledger(ledgerIndex + 1));
+        }
         for (JournalSkillEntry skill : snapshot.skills()) {
             skillStartPages.put(skill.name(), nextPageStart);
-            List<BookPage> pagesForSkill = LevelRpgJournalComposer.buildSkillPages(skill, nextPageStart);
+            JournalPageId pageId = JournalPageIds.skill(skill.skillKey());
+            List<LevelRpgJournalResolvedPage> pagesForSkill = List.of(LevelRpgJournalResolvedPage.of(
+                    pageId,
+                    JournalPagePurpose.SKILL_DETAIL,
+                    LevelRpgJournalComposer.buildSkillPages(skill, nextPageStart, pageId).getFirst()
+            ));
             skillSections.add(new NamedSectionLayout(skill.name(), pagesForSkill));
             nextPageStart += pagesForSkill.size();
         }
 
-        List<BookPage> ledgerPages = LevelRpgJournalComposer.buildLedgerPages(
+        List<LevelRpgJournalResolvedPage> ledgerPages = resolvedLedgerPages(
                 snapshot.characterSheet().stats(),
                 skillStartPages,
-                characterPageStart + identityPages.size()
+                characterPageStart + identityPages.size(),
+                ledgerPageIds
         );
 
-        pages.addAll(introPages);
-        markPurposes(pagePurposes, 0, introPages.size(), JournalPagePurpose.FRONT_MATTER);
+        pages.addAll(frontCoverPages);
         pages.addAll(identityPages);
-        pagePurposes.put(characterPageStart, JournalPagePurpose.CHARACTER_IDENTITY.name());
-        pagePurposes.put(characterPageStart + 1, JournalPagePurpose.CHARACTER_STANDING.name());
         pages.addAll(ledgerPages);
-        markPurposes(pagePurposes, characterPageStart + identityPages.size(), ledgerPages.size(), JournalPagePurpose.LEDGER);
         for (NamedSectionLayout skillSection : skillSections) {
-            int startIndex = pages.size();
             pages.addAll(skillSection.pages());
-            markPurposes(pagePurposes, startIndex, skillSection.pages().size(), JournalPagePurpose.SKILL_DETAIL);
         }
+        pages.addAll(backCoverPages());
 
         List<String> projectionFocusOrder = snapshot.skills().stream().map(JournalSkillEntry::name).toList();
         Map<String, Integer> projectionSpreadByFocus = new LinkedHashMap<>();
@@ -63,35 +76,70 @@ final class LevelRpgJournalDocumentBuilder {
             projectionPageByFocus.put(entry.getKey(), entry.getValue());
         }
 
-        return pairPagesIntoSpreads(pages, pageRegions, pagePurposes, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
+        return pairPagesIntoSpreads(pages, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
+    }
+
+    private static LevelRpgJournalDocument buildUnboundDocument(BookContext context) {
+        List<BookPage> rawPages = new ArrayList<>(LevelRpgJournalComposer.buildUnboundPages(context));
+        List<LevelRpgJournalResolvedPage> pages = new ArrayList<>();
+        pages.addAll(frontCoverPages(context));
+        pages.addAll(List.of(
+                LevelRpgJournalResolvedPage.of(
+                        JournalPageIds.unboundInitiation(),
+                        JournalPagePurpose.FRONT_MATTER,
+                        rawPages.get(0)
+                ),
+                LevelRpgJournalResolvedPage.of(
+                        JournalPageIds.unboundReading(),
+                        JournalPagePurpose.FRONT_MATTER,
+                        rawPages.get(1)
+                )
+        ));
+        pages.addAll(backCoverPages());
+
+        List<JournalArchetypeChoice> choices = LevelRpgArchetypeBindingBridge.availableArchetypes();
+        List<String> projectionFocusOrder = choices.stream().map(JournalArchetypeChoice::focusId).toList();
+        Map<String, Integer> projectionSpreadByFocus = new LinkedHashMap<>();
+        Map<String, Integer> projectionPageByFocus = new LinkedHashMap<>();
+        for (JournalArchetypeChoice choice : choices) {
+            projectionSpreadByFocus.put(choice.focusId(), 0);
+            projectionPageByFocus.put(choice.focusId(), 0);
+        }
+
+        return pairPagesIntoSpreads(
+                pages,
+                projectionFocusOrder,
+                projectionSpreadByFocus,
+                projectionPageByFocus
+        );
     }
 
     private static LevelRpgJournalDocument pairPagesIntoSpreads(
-            List<BookPage> pages,
-            Map<Integer, List<BookInteractiveRegion>> pageRegions,
-            Map<Integer, String> pagePurposes,
+            List<LevelRpgJournalResolvedPage> pages,
             List<String> projectionFocusOrder,
             Map<String, Integer> projectionSpreadByFocus,
             Map<String, Integer> projectionPageByFocus
     ) {
         List<BookSpread> spreads = new ArrayList<>();
         Map<Integer, List<BookInteractiveRegion>> spreadRegions = new LinkedHashMap<>();
+        Map<Integer, String> pagePurposes = new LinkedHashMap<>();
+        Map<Integer, String> pageIds = new LinkedHashMap<>();
 
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex += 2) {
-            BookPage left = pages.get(pageIndex);
-            BookPage right = pageIndex + 1 < pages.size() ? pages.get(pageIndex + 1) : BookPage.empty();
+            LevelRpgJournalResolvedPage leftPage = pages.get(pageIndex);
+            LevelRpgJournalResolvedPage rightPage = pageIndex + 1 < pages.size()
+                    ? pages.get(pageIndex + 1)
+                    : LevelRpgJournalResolvedPage.of(JournalPageIds.syntheticEmpty(pageIndex), JournalPagePurpose.SYNTHETIC_EMPTY, BookPage.empty());
             int spreadIndex = spreads.size();
-            spreads.add(BookSpread.of(left, right));
+            spreads.add(BookSpread.of(leftPage.page(), rightPage.page()));
+            pagePurposes.put(pageIndex, leftPage.purpose().name());
+            pagePurposes.put(pageIndex + 1, rightPage.purpose().name());
+            pageIds.put(pageIndex, leftPage.id().value());
+            pageIds.put(pageIndex + 1, rightPage.id().value());
 
             List<BookInteractiveRegion> regions = new ArrayList<>();
-            List<BookInteractiveRegion> leftRegions = pageRegions.get(pageIndex);
-            if (leftRegions != null) {
-                regions.addAll(leftRegions);
-            }
-            List<BookInteractiveRegion> rightRegions = pageRegions.get(pageIndex + 1);
-            if (rightRegions != null) {
-                regions.addAll(rightRegions);
-            }
+            regions.addAll(leftPage.interactiveRegions());
+            regions.addAll(rightPage.interactiveRegions());
             if (!regions.isEmpty()) {
                 spreadRegions.put(spreadIndex, List.copyOf(regions));
             }
@@ -104,17 +152,41 @@ final class LevelRpgJournalDocumentBuilder {
                 List.copyOf(spreads),
                 Map.copyOf(spreadRegions),
                 Map.copyOf(pagePurposes),
+                Map.copyOf(pageIds),
                 List.copyOf(projectionFocusOrder),
                 Map.copyOf(projectionSpreadByFocus),
                 Map.copyOf(projectionPageByFocus)
         );
     }
 
-    private static void markPurposes(Map<Integer, String> pagePurposes, int startIndex, int count, JournalPagePurpose purpose) {
-        for (int index = 0; index < count; index++) {
-            pagePurposes.put(startIndex + index, purpose.name());
-        }
+    private static List<LevelRpgJournalResolvedPage> frontCoverPages(BookContext context) {
+        List<BookPage> pages = LevelRpgJournalComposer.buildOpeningPages(context);
+        return List.of(
+                LevelRpgJournalResolvedPage.of(JournalPageIds.openingLeft(), JournalPagePurpose.FRONT_MATTER, pages.get(0)),
+                LevelRpgJournalResolvedPage.of(JournalPageIds.openingRight(), JournalPagePurpose.FRONT_MATTER, pages.get(1))
+        );
     }
 
-    private record NamedSectionLayout(String label, List<BookPage> pages) {}
+    private static List<LevelRpgJournalResolvedPage> backCoverPages() {
+        return List.of(
+                LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverLeft(), JournalPagePurpose.FRONT_MATTER, BookPage.empty()),
+                LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverRight(), JournalPagePurpose.FRONT_MATTER, BookPage.empty())
+        );
+    }
+
+    private static List<LevelRpgJournalResolvedPage> resolvedLedgerPages(
+            List<JournalCharacterStat> stats,
+            Map<String, Integer> skillStartPages,
+            int firstLedgerPageIndex,
+            List<JournalPageId> pageIds
+    ) {
+        List<BookPage> pages = LevelRpgJournalComposer.buildLedgerPages(stats, skillStartPages, firstLedgerPageIndex, pageIds);
+        List<LevelRpgJournalResolvedPage> resolved = new ArrayList<>(pages.size());
+        for (int index = 0; index < pages.size(); index++) {
+            resolved.add(LevelRpgJournalResolvedPage.of(pageIds.get(index), JournalPagePurpose.LEDGER, pages.get(index)));
+        }
+        return List.copyOf(resolved);
+    }
+
+    private record NamedSectionLayout(String label, List<LevelRpgJournalResolvedPage> pages) {}
 }

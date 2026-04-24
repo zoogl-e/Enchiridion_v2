@@ -6,8 +6,10 @@ import java.util.Map;
 public final class BookAnimationSpec {
     private static final float ARRIVAL_DURATION_SECONDS = 0.58f;
     private static final float OPEN_DURATION_SECONDS = 1.35f;
-    private static final float CLOSE_DURATION_SECONDS = 1.0f;
+    private static final float CLOSE_DURATION_SECONDS = 1.5f;
     private static final float FLIP_DURATION_SECONDS = 0.56f;
+    private static final float FRONT_FLIP_DURATION_SECONDS = 1.5f;
+    private static final float BACK_FLIP_DURATION_SECONDS = 1.5f;
     private static final float RIFFLE_DURATION_SECONDS = 0.76f;
     private static final float IDLE_LOOP_DURATION_SECONDS = 4.0f;
     private static final float FLIP_PAGE_SWAP_PROGRESS = 0.5f;
@@ -66,7 +68,13 @@ public final class BookAnimationSpec {
         clips.put(BookAnimState.CLOSING, new Clip("animation.model.close", CLOSE_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.OPENING, new Clip("animation.model.open", OPEN_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.IDLE_OPEN, new Clip("animation.model.idle_open", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
+        clips.put(BookAnimState.IDLE_FRONT, new Clip("animation.model.idle_front", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
+        clips.put(BookAnimState.IDLE_BACK, new Clip("animation.model.idle_open", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, false));
         clips.put(BookAnimState.IDLE_SKILLTREE, new Clip("animation.model.idle_skilltree", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
+        clips.put(BookAnimState.FLIPPING_FRONT, new Clip("animation.model.flip_front", FRONT_FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
+        clips.put(BookAnimState.FLIPPING_FRONT_TO_ORIGIN, new Clip("animation.model.flip_front_to_origin", FRONT_FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
+        clips.put(BookAnimState.FLIPPING_BACK, new Clip("animation.model.flip_back", BACK_FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
+        clips.put(BookAnimState.FLIPPING_BACK_TO_ORIGIN, new Clip("animation.model.flip_back_to_origin", BACK_FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.FLIPPING_NEXT, new Clip("animation.model.flip_right", FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.FLIPPING_PREV, new Clip("animation.model.flip_left", FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.FLIPPING_NEXT_SKILLTREE, new Clip("animation.model.flip_right_skilltree", FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));

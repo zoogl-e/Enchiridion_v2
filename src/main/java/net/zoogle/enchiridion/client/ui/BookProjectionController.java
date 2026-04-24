@@ -10,16 +10,14 @@ final class BookProjectionController {
 
     private final BookDefinition definition;
     private final BookContext context;
-    private final int maxSpreadIndex;
 
     private ProjectionMode projectionMode = ProjectionMode.JOURNAL_READING;
     private String selectedProjectionId;
     private int projectionTransitionTicks;
 
-    BookProjectionController(BookDefinition definition, BookContext context, int maxSpreadIndex) {
+    BookProjectionController(BookDefinition definition, BookContext context) {
         this.definition = definition;
         this.context = context;
-        this.maxSpreadIndex = maxSpreadIndex;
     }
 
     void tick() {
@@ -118,6 +116,7 @@ final class BookProjectionController {
         }
         int currentSpread = navigator.currentSpreadIndex();
         int targetSpread = definition.provider().spreadForProjectionFocus(context, nextFocusId);
+        int maxSpreadIndex = Math.max(0, definition.provider().spreadCount(context) - 1);
         if (targetSpread >= 0 && targetSpread != currentSpread) {
             boolean adjacentSpread = Math.abs(targetSpread - currentSpread) == 1;
             boolean changed = adjacentSpread

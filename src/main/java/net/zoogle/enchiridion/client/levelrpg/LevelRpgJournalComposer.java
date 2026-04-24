@@ -2,39 +2,49 @@ package net.zoogle.enchiridion.client.levelrpg;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookPage;
+import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookTextBlock;
 import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 final class LevelRpgJournalComposer {
     static final String READY_MARK = "Skill Point Ready";
+    static final int UNBOUND_INITIATION_SPREAD_INDEX = 0;
+    static final int UNBOUND_INITIAL_SPREAD_INDEX = 0;
     private static final int STANDING_BLOCK_LINE_GAP = 5;
 
     private LevelRpgJournalComposer() {}
 
-    static List<BookPage> buildLegacyOpeningPages(BookContext context) {
-        String playerName = context != null && context.player() != null
-                ? context.player().getName().getString()
-                : "Unknown";
+    static List<BookPage> buildOpeningPages(BookContext context) {
         return List.of(
-                BookPage.of(
-                        BookTextBlock.title(Component.literal(playerName + "'s")),
-                        BookTextBlock.title(Component.literal("Legacy"))
-                ),
+                BookPage.empty(),
                 BookPage.empty()
         );
     }
 
+    static List<BookPage> buildUnboundPages(BookContext context) {
+        return List.of(
+                BookPage.empty(),
+                BookPage.empty()
+        );
+    }
+
+    static Map<Integer, List<BookInteractiveRegion>> buildUnboundPageRegions(BookContext context) {
+        return Map.of();
+    }
+
     static List<BookPage> buildIdentityPages(BookContext context, JournalCharacterSheet characterSheet, int firstLedgerPageIndex) {
         return List.of(
-                buildCharacterIdentityPage(characterSheet, firstLedgerPageIndex - 2),
-                buildStandingPage(context, characterSheet, firstLedgerPageIndex, firstLedgerPageIndex - 1)
+                buildCharacterIdentityPage(characterSheet, firstLedgerPageIndex - 2, JournalPageIds.characterIdentity()),
+                buildStandingPage(context, characterSheet, firstLedgerPageIndex, firstLedgerPageIndex - 1, JournalPageIds.characterStanding())
         );
     }
 
@@ -42,54 +52,62 @@ final class LevelRpgJournalComposer {
         return Math.max(1, (int) Math.ceil(stats.size() / (double) JournalPageStyleSystem.ledgerRowsPerPage(BookPageSide.LEFT)));
     }
 
-    static List<BookPage> buildLedgerPages(List<JournalCharacterStat> stats, Map<String, Integer> skillStartPages, int firstLedgerPageIndex) {
+    static List<BookPage> buildLedgerPages(
+            List<JournalCharacterStat> stats,
+            Map<String, Integer> skillStartPages,
+            int firstLedgerPageIndex,
+            List<JournalPageId> pageIds
+    ) {
         JournalContentStore content = JournalContentStore.instance();
         int rowsPerPage = JournalPageStyleSystem.ledgerRowsPerPage(BookPageSide.LEFT);
         int pageCount = Math.max(1, (int) Math.ceil(stats.size() / (double) rowsPerPage));
         List<BookPage> pages = new ArrayList<>(pageCount);
         for (int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
             int absolutePageIndex = firstLedgerPageIndex + pageIndex;
+            JournalContentStore.PageContentView pageContent = content.page(pageIds.get(pageIndex), absolutePageIndex, JournalPagePurpose.LEDGER);
             BookPageSide pageSide = Math.floorMod(absolutePageIndex, 2) == 0 ? BookPageSide.LEFT : BookPageSide.RIGHT;
             JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.LEDGER, pageSide);
-            page.addTitle(content.text(absolutePageIndex, JournalPageSlot.TITLE, pageIndex == 0 ? "Stat Ledger" : "Ledger"));
+            page.addTitle(pageContent.text(JournalPageSlot.TITLE, pageIndex == 0 ? "Stat Ledger" : "Ledger"));
             int rowStart = pageIndex * rowsPerPage;
             int rowEnd = Math.min(stats.size(), rowStart + rowsPerPage);
             List<JournalCharacterStat> defaultRows = stats.subList(rowStart, rowEnd);
             page.addLedgerRows(
                     JournalPageSlot.ROWS,
-                    ledgerRowsForPage(content.text(absolutePageIndex, JournalPageSlot.ROWS, defaultLedgerRows(defaultRows)), defaultRows),
+                    ledgerRowsForPage(pageContent.text(JournalPageSlot.ROWS, defaultLedgerRows(defaultRows)), defaultRows),
                     skillStartPages
             );
-            page.addFooter(content.text(absolutePageIndex, JournalPageSlot.FOOTER, "Folio " + (pageIndex + 1) + " of " + pageCount));
+            page.addFooter(pageContent.text(JournalPageSlot.FOOTER, "Folio " + (pageIndex + 1) + " of " + pageCount));
             pages.add(page.build());
         }
         return List.copyOf(pages);
     }
 
-    static List<BookPage> buildSkillPages(JournalSkillEntry skill, int pageIndex) {
-        return List.of(SkillPageTemplate.build(skill, pageIndex));
+    static List<BookPage> buildSkillPages(JournalSkillEntry skill, int pageIndex, JournalPageId pageId) {
+        return List.of(SkillPageTemplate.build(skill, pageIndex, pageId));
     }
 
-    private static BookPage buildCharacterIdentityPage(JournalCharacterSheet characterSheet, int pageIndex) {
+    private static BookPage buildCharacterIdentityPage(JournalCharacterSheet characterSheet, int pageIndex, JournalPageId pageId) {
         JournalContentStore content = JournalContentStore.instance();
+        JournalContentStore.PageContentView pageContent = content.page(pageId, pageIndex, JournalPagePurpose.CHARACTER_IDENTITY);
         IdentityRecord record = parseIdentityRecord(characterSheet.identitySummary());
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.CHARACTER_IDENTITY, BookPageSide.LEFT);
-        page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, "Character Record"));
-        page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, record.name()));
-        page.addSubtitle(content.text(pageIndex, JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name())));
+        page.addTitle(pageContent.text(JournalPageSlot.TITLE, "Character Record"));
+        page.addFocal(pageContent.text(JournalPageSlot.FOCAL, record.name()));
+        page.addSubtitle(pageContent.text(JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name())));
         return page.build();
     }
 
-    private static BookPage buildStandingPage(BookContext context, JournalCharacterSheet characterSheet, int firstLedgerPageIndex, int pageIndex) {
+    private static BookPage buildStandingPage(BookContext context, JournalCharacterSheet characterSheet, int firstLedgerPageIndex, int pageIndex, JournalPageId pageId) {
         JournalContentStore content = JournalContentStore.instance();
+        JournalContentStore.PageContentView pageContent = content.page(pageId, pageIndex, JournalPagePurpose.CHARACTER_STANDING);
         StandingRecord standing = standingRecord(context, characterSheet);
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.CHARACTER_STANDING, BookPageSide.RIGHT);
-        page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, "Standing"));
-        page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, "Level " + standing.level()));
-        page.addStats(contentLines(content.text(pageIndex, JournalPageSlot.STATS, String.join("\n", standingLines(standing)))), STANDING_BLOCK_LINE_GAP);
+        page.addTitle(pageContent.text(JournalPageSlot.TITLE, "Standing"));
+        page.addFocal(pageContent.text(JournalPageSlot.FOCAL, "Level " + standing.level()));
+        page.addStats(contentLines(pageContent.text(JournalPageSlot.STATS, String.join("\n", standingLines(standing)))), STANDING_BLOCK_LINE_GAP);
         page.addInteraction(
                 "standing:view-disciplines",
-                content.text(pageIndex, JournalPageSlot.INTERACTION, "View Disciplines"),
+                pageContent.text(JournalPageSlot.INTERACTION, "View Disciplines"),
                 Component.literal("Open the Stat Ledger"),
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
                         && LevelRpgJournalInteractionBridge.jumpToJournalPage(bookContext, firstLedgerPageIndex)

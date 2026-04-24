@@ -6,19 +6,20 @@ import net.zoogle.enchiridion.api.BookPage;
 final class SkillPageTemplate {
     private SkillPageTemplate() {}
 
-    static BookPage build(JournalSkillEntry skill, int pageIndex) {
+    static BookPage build(JournalSkillEntry skill, int pageIndex, JournalPageId pageId) {
         JournalContentStore content = JournalContentStore.instance();
+        JournalContentStore.PageContentView pageContent = content.page(pageId, pageIndex, JournalPagePurpose.SKILL_DETAIL);
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.SKILL_DETAIL, net.zoogle.enchiridion.api.BookPageSide.LEFT);
         page.addInteraction(
                 "skill-button:" + skill.name() + ":0",
-                content.text(pageIndex, JournalPageSlot.INTERACTION, "View Skill"),
+                pageContent.text(JournalPageSlot.INTERACTION, "View Skill"),
                 Component.literal("Open " + skill.name()),
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
                         && LevelRpgJournalInteractionBridge.openSkillProjection(bookContext, skill.name())
         );
-        page.addTitle(content.text(pageIndex, JournalPageSlot.TITLE, skill.name()));
-        page.addFocal(content.text(pageIndex, JournalPageSlot.FOCAL, String.valueOf(skill.investedSkillLevel())));
-        page.addBody(content.text(pageIndex, JournalPageSlot.BODY, compactSkillDescription(skill.roleSummary())));
+        page.addTitle(pageContent.text(JournalPageSlot.TITLE, skill.name()));
+        page.addFocal(pageContent.text(JournalPageSlot.FOCAL, String.valueOf(skill.investedSkillLevel())));
+        page.addBody(pageContent.text(JournalPageSlot.BODY, compactSkillDescription(skill.roleSummary())));
         return page.build();
     }
 

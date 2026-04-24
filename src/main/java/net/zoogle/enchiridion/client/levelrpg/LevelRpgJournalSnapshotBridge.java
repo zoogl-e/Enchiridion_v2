@@ -119,6 +119,10 @@ final class LevelRpgJournalSnapshotBridge {
         if (skill == null) {
             return null;
         }
+        String skillKey = firstNonBlank(
+                stringValue(call(skill, "path")),
+                stringValue(call(skill, "id"))
+        );
         String displayName = stringValue(call(skill, "displayName"));
         String roleSummary = stringValue(call(skill, "summary"));
         int investedSkillLevel = firstNonZero(
@@ -146,6 +150,7 @@ final class LevelRpgJournalSnapshotBridge {
         Object mastery = call(skill, "mastery");
 
         return new JournalSkillEntry(
+                firstNonBlank(skillKey, LevelRpgJournalSnapshotFactory.CANONICAL_SKILL_PATHS.getOrDefault(displayName, displayName)),
                 displayName,
                 roleSummary,
                 investedSkillLevel,

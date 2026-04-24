@@ -65,7 +65,7 @@ final class BookOverlayRenderer {
     }
 
     private void renderOverlayTooltips(GuiGraphics graphics, Font font, Component title, BookScreenController controller, BookViewState viewState, int mouseX, int mouseY) {
-        if (viewState.closedBookHovered() && controller.isClosed()) {
+        if (viewState.closedBookHovered() && controller.isClosed() && title != null && !title.getString().isBlank()) {
             graphics.renderTooltip(font, viewState.tooltipLines(title), mouseX, mouseY);
         } else if (viewState.hoveredProjectionButton() != null && viewState.hoveredProjectionButton().view().primaryActionLabel() != null) {
             graphics.renderTooltip(font, viewState.hoveredProjectionButton().view().primaryActionLabel(), mouseX, mouseY);

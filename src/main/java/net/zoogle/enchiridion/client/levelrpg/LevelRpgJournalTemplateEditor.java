@@ -61,7 +61,7 @@ public final class LevelRpgJournalTemplateEditor {
             return handleEditingKey(keyCode, modifiers, onChanged);
         }
         if (keyCode == GLFW.GLFW_KEY_E && selection != null) {
-            startEditing(viewState);
+            startEditing(controller, viewState);
             return true;
         }
         return false;
@@ -296,20 +296,23 @@ public final class LevelRpgJournalTemplateEditor {
         );
     }
 
-    private void startEditing(BookViewState viewState) {
+    private void startEditing(BookScreenController controller, BookViewState viewState) {
         if (selection == null) {
             return;
         }
         int pageIndex = pageIndex(viewState, selection.pageSide());
-        String currentText = JournalContentStore.instance().text(pageIndex, selection.slot(), captureCurrentSlotContent(viewState, selection));
-        editing = new EditingSession(selection.purpose(), selection.pageSide(), selection.slot(), pageIndex, new StringBuilder(currentText));
+        JournalPageId pageId = pageIdFor(controller, viewState, selection.pageSide());
+        String currentText = JournalContentStore.instance()
+                .page(pageId, pageIndex, selection.purpose())
+                .text(selection.slot(), captureCurrentSlotContent(viewState, selection));
+        editing = new EditingSession(selection.purpose(), selection.pageSide(), selection.slot(), pageId, pageIndex, new StringBuilder(currentText));
     }
 
     private void persistEditing(Runnable onChanged) {
         if (editing == null) {
             return;
         }
-        JournalContentStore.instance().putText(editing.pageIndex(), editing.purpose(), editing.slot(), editing.buffer().toString());
+        JournalContentStore.instance().putText(editing.pageId(), editing.pageIndex(), editing.purpose(), editing.slot(), editing.buffer().toString());
         onChanged.run();
     }
 
@@ -592,6 +595,17 @@ public final class LevelRpgJournalTemplateEditor {
         }
     }
 
+    private static JournalPageId pageIdFor(BookScreenController controller, BookViewState viewState, BookPageSide pageSide) {
+        if (viewState.displayedSpread() == null) {
+            return null;
+        }
+        if (!(controller.definition().provider() instanceof BookTemplateDebugProvider debugProvider)) {
+            return null;
+        }
+        String pageId = debugProvider.templatePageIdForPageIndex(controller.context(), pageIndex(viewState, pageSide));
+        return pageId == null || pageId.isBlank() ? null : new JournalPageId(pageId);
+    }
+
     private static int pageIndex(BookViewState viewState, BookPageSide pageSide) {
         return (viewState.displayedSpreadIndex() * 2) + (pageSide == BookPageSide.RIGHT ? 1 : 0);
     }
@@ -707,6 +721,7 @@ public final class LevelRpgJournalTemplateEditor {
             JournalPagePurpose purpose,
             BookPageSide pageSide,
             JournalPageSlot slot,
+            JournalPageId pageId,
             int pageIndex,
             StringBuilder buffer
     ) {}

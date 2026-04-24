@@ -8,13 +8,18 @@ import net.zoogle.enchiridion.client.ui.BookScreen;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.util.List;
 
-final class LevelRpgJournalInteractionBridge {
+public final class LevelRpgJournalInteractionBridge {
     private static final String LEVEL_RPG_SKILL_TREE_SCREEN_CLASS = "net.zoogle.levelrpg.client.ui.SkillTreeScreen";
     private static final String SPEND_SKILL_POINT_PAYLOAD_CLASS = "net.zoogle.levelrpg.net.payload.SpendSkillPointRequestPayload";
     private static final String PACKET_DISTRIBUTOR_CLASS = "net.neoforged.neoforge.network.PacketDistributor";
 
     private LevelRpgJournalInteractionBridge() {}
+
+    public static List<JournalArchetypeChoice> availableArchetypes() {
+        return LevelRpgArchetypeBindingBridge.availableArchetypes();
+    }
 
     static boolean openSkillScreen(BookContext context, String journalSkillName) {
         if (context == null || context.minecraft() == null || context.player() == null || journalSkillName == null) {
@@ -91,4 +96,37 @@ final class LevelRpgJournalInteractionBridge {
         }
         return bookScreen.jumpToSpread(pageIndex / 2);
     }
+
+    static boolean beginArchetypeSelection(BookContext context) {
+        if (context == null || context.minecraft() == null) {
+            return false;
+        }
+        if (!(context.minecraft().screen instanceof BookScreen bookScreen)) {
+            return false;
+        }
+        LevelRpgJournalIntroFlowState.get().beginSelection(context);
+        return bookScreen.openArchetypeReel();
+    }
+
+    static boolean beginArchetypeBinding(BookContext context, String focusId) {
+        if (context == null || context.minecraft() == null || focusId == null || focusId.isBlank()) {
+            return false;
+        }
+        if (!(context.minecraft().screen instanceof BookScreen bookScreen)) {
+            return false;
+        }
+        return bookScreen.beginArchetypeBinding(focusId);
+    }
+
+    static boolean openArchetypeProjection(BookContext context, String focusId) {
+        if (context == null || context.minecraft() == null || focusId == null || focusId.isBlank()) {
+            return false;
+        }
+        if (!(context.minecraft().screen instanceof BookScreen bookScreen)) {
+            return false;
+        }
+        LevelRpgJournalIntroFlowState.get().setSelectedFocus(focusId);
+        return bookScreen.openArchetypeReel();
+    }
+
 }

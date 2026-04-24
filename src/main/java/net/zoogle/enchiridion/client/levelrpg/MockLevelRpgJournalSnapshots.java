@@ -35,6 +35,7 @@ public final class MockLevelRpgJournalSnapshots {
                 ),
                 List.of(
                         new JournalSkillEntry(
+                                "valor",
                                 "Valor",
                                 "The discipline of meeting danger head-on and holding the line when battle turns vicious.",
                                 0,
@@ -60,6 +61,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "vitality",
                                 "Vitality",
                                 "The discipline of endurance, recovery, and surviving the punishment that ends lesser journeys.",
                                 0,
@@ -85,6 +87,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "mining",
                                 "Mining",
                                 "The discipline of gathering from the deep earth and pushing farther into resource-rich ground.",
                                 0,
@@ -110,6 +113,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "culinary",
                                 "Culinary",
                                 "The discipline of preparing stronger meals, steadier sustain, and support for the road ahead.",
                                 0,
@@ -135,6 +139,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "forging",
                                 "Forging",
                                 "The discipline of strengthening gear, improving crafted equipment, and advancing smithing work.",
                                 0,
@@ -160,6 +165,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "artificing",
                                 "Artificing",
                                 "The discipline of utility tools, technical parts, and clever support crafts.",
                                 0,
@@ -185,6 +191,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "magick",
                                 "Magick",
                                 "The discipline of arcane study, attunement, and recipes shaped through magical knowledge.",
                                 0,
@@ -210,6 +217,7 @@ public final class MockLevelRpgJournalSnapshots {
                                 )
                         ),
                         new JournalSkillEntry(
+                                "exploration",
                                 "Exploration",
                                 "The discipline of movement, discovery, and lasting longer across the world at large.",
                                 0,

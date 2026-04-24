@@ -5,6 +5,7 @@ import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookRegionAction;
+import net.zoogle.enchiridion.api.BookTrackedRegion;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
 public record PageInteractiveNode(
@@ -21,9 +22,16 @@ public record PageInteractiveNode(
         VisualType visualType,
         BookSceneRenderer.ScreenRect screenRect,
         BookSceneRenderer.ScreenQuad screenQuad,
+        HitTestMode hitTestMode,
         BookPageElement.InteractiveElement interactiveElement,
-        BookInteractiveRegion region
+        BookInteractiveRegion region,
+        BookTrackedRegion trackedRegion
 ) {
+    public enum HitTestMode {
+        PAGE_LOCAL,
+        SCREEN_SPACE
+    }
+
     public enum VisualType {
         INLINE_LINK,
         BUTTON,

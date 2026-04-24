@@ -46,7 +46,7 @@ public final class BookAnimController {
                     enterClosed();
                 }
             }
-            case FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> {
+            case FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN, FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> {
                 float progress = getNormalizedProgress();
                 if (!swappedThisState && progress >= BookAnimationSpec.flipPageSwapProgress()) {
                     currentSpread = pendingSpread;
@@ -76,6 +76,42 @@ public final class BookAnimController {
         }
         pendingSpread = currentSpread - 1;
         enterFlip(BookAnimState.FLIPPING_PREV);
+        return true;
+    }
+
+    public boolean requestFrontSpread() {
+        if (state != BookAnimState.IDLE_OPEN || currentSpread <= 0) {
+            return false;
+        }
+        pendingSpread = currentSpread - 1;
+        enterFlip(BookAnimState.FLIPPING_FRONT);
+        return true;
+    }
+
+    public boolean requestFrontSpreadToOrigin() {
+        if (state != BookAnimState.IDLE_OPEN) {
+            return false;
+        }
+        pendingSpread = currentSpread + 1;
+        enterFlip(BookAnimState.FLIPPING_FRONT_TO_ORIGIN);
+        return true;
+    }
+
+    public boolean requestBackSpread() {
+        if (state != BookAnimState.IDLE_OPEN) {
+            return false;
+        }
+        pendingSpread = currentSpread + 1;
+        enterFlip(BookAnimState.FLIPPING_BACK);
+        return true;
+    }
+
+    public boolean requestBackSpreadToOrigin() {
+        if (state != BookAnimState.IDLE_OPEN || currentSpread <= 0) {
+            return false;
+        }
+        pendingSpread = currentSpread - 1;
+        enterFlip(BookAnimState.FLIPPING_BACK_TO_ORIGIN);
         return true;
     }
 
@@ -126,9 +162,19 @@ public final class BookAnimController {
         return currentSpread;
     }
 
+    public int getPendingSpread() {
+        return pendingSpread;
+    }
+
+    public void setCurrentSpread(int currentSpread) {
+        this.currentSpread = Math.max(0, currentSpread);
+        this.pendingSpread = this.currentSpread;
+        this.swappedThisState = false;
+    }
+
     public float getNormalizedProgress() {
         float duration = switch (state) {
-            case ARRIVING, OPENING, CLOSING, FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> BookAnimationSpec.durationSeconds(state);
+            case ARRIVING, OPENING, CLOSING, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN, FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> BookAnimationSpec.durationSeconds(state);
             default -> 1.0f;
         };
         return Math.clamp(stateTime / duration, 0.0f, 1.0f);

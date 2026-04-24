@@ -690,6 +690,7 @@ public final class JournalPageStyleSystem {
                         new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 1.0f, 1.0f)
                 )
         ));
+        templates.put(JournalPagePurpose.SYNTHETIC_EMPTY, Map.of());
         return templates;
     }
 
@@ -700,6 +701,7 @@ public final class JournalPageStyleSystem {
             case LEDGER -> EnumSet.of(JournalPageSlot.ROWS);
             case SKILL_DETAIL -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.BODY, JournalPageSlot.INTERACTION);
             case FRONT_MATTER -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.BODY);
+            case SYNTHETIC_EMPTY -> EnumSet.noneOf(JournalPageSlot.class);
         };
     }
 

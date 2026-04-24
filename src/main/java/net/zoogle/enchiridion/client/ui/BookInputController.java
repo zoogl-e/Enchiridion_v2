@@ -11,6 +11,14 @@ final class BookInputController {
         if (controller.isClosing()) {
             return true;
         }
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (controller.isClosed() || controller.isArriving()) {
+                closeNow.run();
+            } else {
+                controller.beginUserClosing();
+            }
+            return true;
+        }
         if (controller.isProjectionVisible()) {
             if (keyCode == GLFW.GLFW_KEY_RIGHT || keyCode == GLFW.GLFW_KEY_D) {
                 return controller.nextProjectionFocus();
@@ -18,7 +26,7 @@ final class BookInputController {
             if (keyCode == GLFW.GLFW_KEY_LEFT || keyCode == GLFW.GLFW_KEY_A) {
                 return controller.previousProjectionFocus();
             }
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
                 controller.closeProjection();
                 return true;
             }
@@ -33,14 +41,6 @@ final class BookInputController {
         if (keyCode == GLFW.GLFW_KEY_LEFT || keyCode == GLFW.GLFW_KEY_A) {
             if (controller.isJournalReadable()) {
                 controller.previousSpread();
-            }
-            return true;
-        }
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            if (controller.isClosed() || controller.isArriving()) {
-                closeNow.run();
-            } else {
-                controller.beginClosing();
             }
             return true;
         }

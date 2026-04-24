@@ -13,7 +13,7 @@ import java.util.List;
 public final class BookViewState {
     private static final int INITIAL_TEXT_DELAY_TICKS = 32;
     private static final float TEXT_FADE_OUT_PER_TICK = 0.45f;
-    private static final float TEXT_FADE_OUT_CLOSING_PER_TICK = 0.08f;
+    private static final float TEXT_FADE_OUT_CLOSING_PER_TICK = 0.14f;
     private static final float TEXT_FADE_IN_PER_TICK = 0.18f;
     private static final float TEXT_ALPHA_EPSILON = 0.01f;
     private static final float INSPECT_YAW_PER_PIXEL = 0.45f;
@@ -59,7 +59,15 @@ public final class BookViewState {
         targetSpread = controller.currentSpread();
         targetSpreadIndex = controller.spreadIndex();
 
-        boolean flipping = controller.state() == BookAnimState.FLIPPING_NEXT || controller.state() == BookAnimState.FLIPPING_PREV;
+        boolean flipping = switch (controller.state()) {
+            case FLIPPING_FRONT,
+                    FLIPPING_FRONT_TO_ORIGIN,
+                    FLIPPING_BACK,
+                    FLIPPING_BACK_TO_ORIGIN,
+                    FLIPPING_NEXT,
+                    FLIPPING_PREV -> true;
+            default -> false;
+        };
         boolean arriving = controller.isArriving();
         boolean opening = controller.isOpening();
         boolean closed = controller.isClosed();

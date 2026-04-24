@@ -2,6 +2,7 @@ package net.zoogle.enchiridion.client.render;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
+import net.zoogle.enchiridion.api.BookFrontCoverCardState;
 import net.zoogle.enchiridion.client.anim.BookAnimationSpec;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
 import software.bernie.geckolib.animatable.GeoAnimatable;
@@ -13,11 +14,21 @@ import software.bernie.geckolib.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 final class EnchiridionBookAnimatable implements GeoAnimatable {
+    static final String MAGIC_TEXT_LEFT_BONE = "magic_text_left";
+    static final String MAGIC_TEXT_RIGHT_BONE = "magic_text_right";
+    static final String MAGIC_TEXT_FRONT_LEFT_BONE = "magic_text_front_left";
+
     private static final RawAnimation ARRIVAL_ANIMATION = rawAnimationFor(BookAnimState.ARRIVING);
     private static final RawAnimation OPENING_ANIMATION = rawAnimationFor(BookAnimState.OPENING);
     private static final RawAnimation CLOSING_ANIMATION = rawAnimationFor(BookAnimState.CLOSING);
     private static final RawAnimation IDLE_OPEN_ANIMATION = rawAnimationFor(BookAnimState.IDLE_OPEN);
+    private static final RawAnimation IDLE_FRONT_ANIMATION = rawAnimationFor(BookAnimState.IDLE_FRONT);
+    private static final RawAnimation IDLE_BACK_ANIMATION = rawAnimationFor(BookAnimState.IDLE_BACK);
     private static final RawAnimation IDLE_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.IDLE_SKILLTREE);
+    private static final RawAnimation FLIP_FRONT_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_FRONT);
+    private static final RawAnimation FLIP_FRONT_TO_ORIGIN_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_FRONT_TO_ORIGIN);
+    private static final RawAnimation FLIP_BACK_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_BACK);
+    private static final RawAnimation FLIP_BACK_TO_ORIGIN_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_BACK_TO_ORIGIN);
     private static final RawAnimation FLIP_NEXT_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_NEXT);
     private static final RawAnimation FLIP_PREV_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_PREV);
     private static final RawAnimation FLIP_NEXT_SKILLTREE_ANIMATION = rawAnimationFor(BookAnimState.FLIPPING_NEXT_SKILLTREE);
@@ -34,9 +45,16 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
     private ResourceLocation textureLocation = EnchiridionBookGeoModel.DEFAULT_TEXTURE;
     private ResourceLocation magicLeftTextureLocation = EnchiridionBookGeoModel.DEFAULT_TEXTURE;
     private ResourceLocation magicRightTextureLocation = EnchiridionBookGeoModel.DEFAULT_TEXTURE;
+    private BookFrontCoverCardState frontCoverCardState = BookFrontCoverCardState.hidden();
+    private ReadableSurfaceTarget leftSurfaceTarget = ReadableSurfaceTarget.none();
+    private ReadableSurfaceTarget rightSurfaceTarget = ReadableSurfaceTarget.none();
 
     public void setAnimState(BookAnimState animState) {
         this.animState = animState;
+    }
+
+    public BookAnimState animState() {
+        return animState;
     }
 
     public void setTextureLocation(ResourceLocation textureLocation) {
@@ -58,6 +76,27 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
 
     public ResourceLocation magicRightTextureLocation() {
         return magicRightTextureLocation;
+    }
+
+    public void setFrontCoverCardState(BookFrontCoverCardState frontCoverCardState) {
+        this.frontCoverCardState = frontCoverCardState == null ? BookFrontCoverCardState.hidden() : frontCoverCardState;
+    }
+
+    public BookFrontCoverCardState frontCoverCardState() {
+        return frontCoverCardState;
+    }
+
+    public void setReadableSurfaceTargets(ReadableSurfaceTarget leftSurfaceTarget, ReadableSurfaceTarget rightSurfaceTarget) {
+        this.leftSurfaceTarget = leftSurfaceTarget == null ? ReadableSurfaceTarget.none() : leftSurfaceTarget;
+        this.rightSurfaceTarget = rightSurfaceTarget == null ? ReadableSurfaceTarget.none() : rightSurfaceTarget;
+    }
+
+    public ReadableSurfaceTarget leftSurfaceTarget() {
+        return leftSurfaceTarget;
+    }
+
+    public ReadableSurfaceTarget rightSurfaceTarget() {
+        return rightSurfaceTarget;
     }
 
     @Override
@@ -90,7 +129,13 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
             case CLOSING -> CLOSING_ANIMATION;
             case OPENING -> OPENING_ANIMATION;
             case IDLE_OPEN -> IDLE_OPEN_ANIMATION;
+            case IDLE_FRONT -> IDLE_FRONT_ANIMATION;
+            case IDLE_BACK -> IDLE_BACK_ANIMATION;
             case IDLE_SKILLTREE -> IDLE_SKILLTREE_ANIMATION;
+            case FLIPPING_FRONT -> FLIP_FRONT_ANIMATION;
+            case FLIPPING_FRONT_TO_ORIGIN -> FLIP_FRONT_TO_ORIGIN_ANIMATION;
+            case FLIPPING_BACK -> FLIP_BACK_ANIMATION;
+            case FLIPPING_BACK_TO_ORIGIN -> FLIP_BACK_TO_ORIGIN_ANIMATION;
             case FLIPPING_NEXT -> FLIP_NEXT_ANIMATION;
             case FLIPPING_PREV -> FLIP_PREV_ANIMATION;
             case FLIPPING_NEXT_SKILLTREE -> FLIP_NEXT_SKILLTREE_ANIMATION;
@@ -109,5 +154,15 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
             case LOOP -> RawAnimation.begin().thenLoop(clip.geckoName());
             case HOLD_ON_LAST_FRAME -> RawAnimation.begin().thenPlayAndHold(clip.geckoName());
         };
+    }
+
+    record ReadableSurfaceTarget(String boneName, boolean renderTexture) {
+        static ReadableSurfaceTarget none() {
+            return new ReadableSurfaceTarget("", false);
+        }
+
+        boolean active() {
+            return boneName != null && !boneName.isBlank();
+        }
     }
 }

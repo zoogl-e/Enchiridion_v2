@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 public record JournalSkillEntry(
+        String skillKey,
         String name,
         String roleSummary,
         int investedSkillLevel,
@@ -20,6 +21,7 @@ public record JournalSkillEntry(
         List<JournalMilestoneEntry> milestones
 ) {
     public JournalSkillEntry {
+        Objects.requireNonNull(skillKey, "skillKey");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(roleSummary, "roleSummary");
         masteryProgressText = masteryProgressText == null ? "" : masteryProgressText;

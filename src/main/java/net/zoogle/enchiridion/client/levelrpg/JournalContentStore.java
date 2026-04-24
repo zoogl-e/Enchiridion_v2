@@ -21,34 +21,53 @@ final class JournalContentStore {
             .resolve("enchiridion_journal_content.json");
     private static final JournalContentStore INSTANCE = load();
 
-    private final Map<Integer, PageContentOverride> pageOverrides;
+    private final Map<String, PageContentOverride> pageOverridesById;
+    private final Map<Integer, PageContentOverride> legacyPageOverrides;
+    private boolean migrationSavePending;
 
-    private JournalContentStore(Map<Integer, PageContentOverride> pageOverrides) {
-        this.pageOverrides = pageOverrides;
+    private JournalContentStore(
+            Map<String, PageContentOverride> pageOverridesById,
+            Map<Integer, PageContentOverride> legacyPageOverrides
+    ) {
+        this.pageOverridesById = pageOverridesById;
+        this.legacyPageOverrides = legacyPageOverrides;
     }
 
     static JournalContentStore instance() {
         return INSTANCE;
     }
 
-    String text(int pageIndex, JournalPageSlot slot, String defaultValue) {
-        PageContentOverride page = pageOverrides.get(pageIndex);
-        if (page == null) {
-            return defaultValue;
-        }
-        return page.slots().getOrDefault(slot, defaultValue);
+    PageContentView page(JournalPageId pageId, int pageIndex, JournalPagePurpose purpose) {
+        return new PageContentView(pageId, pageIndex, purpose);
     }
 
-    void putText(int pageIndex, JournalPagePurpose purpose, JournalPageSlot slot, String value) {
-        PageContentOverride page = pageOverrides.computeIfAbsent(pageIndex, ignored -> new PageContentOverride(purpose, new EnumMap<>(JournalPageSlot.class)));
+    void putText(JournalPageId pageId, int pageIndex, JournalPagePurpose purpose, JournalPageSlot slot, String value) {
+        if (pageId != null) {
+            PageContentOverride page = pageOverridesById.computeIfAbsent(pageId.value(), ignored -> new PageContentOverride(purpose, new EnumMap<>(JournalPageSlot.class)));
+            page.slots().put(slot, value == null ? "" : value);
+            page.purpose = purpose;
+            legacyPageOverrides.remove(pageIndex);
+            return;
+        }
+        PageContentOverride page = legacyPageOverrides.computeIfAbsent(pageIndex, ignored -> new PageContentOverride(purpose, new EnumMap<>(JournalPageSlot.class)));
         page.slots().put(slot, value == null ? "" : value);
         page.purpose = purpose;
     }
 
     void save() {
         SerializedContent serialized = new SerializedContent();
+        serialized.pagesById = new LinkedHashMap<>();
+        for (Map.Entry<String, PageContentOverride> pageEntry : pageOverridesById.entrySet()) {
+            SerializedPage page = new SerializedPage();
+            page.purpose = pageEntry.getValue().purpose.name();
+            page.slots = new LinkedHashMap<>();
+            for (Map.Entry<JournalPageSlot, String> slotEntry : pageEntry.getValue().slots().entrySet()) {
+                page.slots.put(slotEntry.getKey().name(), slotEntry.getValue());
+            }
+            serialized.pagesById.put(pageEntry.getKey(), page);
+        }
         serialized.pages = new LinkedHashMap<>();
-        for (Map.Entry<Integer, PageContentOverride> pageEntry : pageOverrides.entrySet()) {
+        for (Map.Entry<Integer, PageContentOverride> pageEntry : legacyPageOverrides.entrySet()) {
             SerializedPage page = new SerializedPage();
             page.purpose = pageEntry.getValue().purpose.name();
             page.slots = new LinkedHashMap<>();
@@ -67,16 +86,38 @@ final class JournalContentStore {
     }
 
     private static JournalContentStore load() {
-        Map<Integer, PageContentOverride> overrides = new LinkedHashMap<>();
+        Map<String, PageContentOverride> overridesById = new LinkedHashMap<>();
+        Map<Integer, PageContentOverride> legacyOverrides = new LinkedHashMap<>();
         if (!Files.exists(CONTENT_PATH)) {
-            return new JournalContentStore(overrides);
+            return new JournalContentStore(overridesById, legacyOverrides);
         }
         try (Reader reader = Files.newBufferedReader(CONTENT_PATH)) {
             SerializedContent serialized = GSON.fromJson(reader, SerializedContent.class);
-            if (serialized == null || serialized.pages == null) {
-                return new JournalContentStore(overrides);
+            if (serialized == null) {
+                return new JournalContentStore(overridesById, legacyOverrides);
             }
-            for (Map.Entry<String, SerializedPage> pageEntry : serialized.pages.entrySet()) {
+            if (serialized.pagesById != null) {
+                for (Map.Entry<String, SerializedPage> pageEntry : serialized.pagesById.entrySet()) {
+                    JournalPagePurpose purpose;
+                    try {
+                        purpose = JournalPagePurpose.valueOf(pageEntry.getValue().purpose);
+                    } catch (Exception ignored) {
+                        continue;
+                    }
+                    Map<JournalPageSlot, String> slots = new EnumMap<>(JournalPageSlot.class);
+                    if (pageEntry.getValue().slots != null) {
+                        for (Map.Entry<String, String> slotEntry : pageEntry.getValue().slots.entrySet()) {
+                            try {
+                                slots.put(JournalPageSlot.valueOf(slotEntry.getKey()), slotEntry.getValue());
+                            } catch (IllegalArgumentException ignored) {
+                            }
+                        }
+                    }
+                    overridesById.put(pageEntry.getKey(), new PageContentOverride(purpose, slots));
+                }
+            }
+            if (serialized.pages != null) {
+                for (Map.Entry<String, SerializedPage> pageEntry : serialized.pages.entrySet()) {
                 int pageIndex;
                 try {
                     pageIndex = Integer.parseInt(pageEntry.getKey());
@@ -95,15 +136,75 @@ final class JournalContentStore {
                         try {
                             slots.put(JournalPageSlot.valueOf(slotEntry.getKey()), slotEntry.getValue());
                         } catch (IllegalArgumentException ignored) {
-                        }
+                            }
                     }
                 }
-                overrides.put(pageIndex, new PageContentOverride(purpose, slots));
+                legacyOverrides.put(pageIndex, new PageContentOverride(purpose, slots));
+                }
             }
         } catch (IOException | JsonParseException ignored) {
-            return new JournalContentStore(new LinkedHashMap<>());
+            return new JournalContentStore(new LinkedHashMap<>(), new LinkedHashMap<>());
         }
-        return new JournalContentStore(overrides);
+        return new JournalContentStore(overridesById, legacyOverrides);
+    }
+
+    private PageContentOverride resolveOverride(JournalPageId pageId, int pageIndex, JournalPagePurpose purpose) {
+        if (pageId != null) {
+            PageContentOverride semantic = pageOverridesById.get(pageId.value());
+            if (semantic != null) {
+                return semantic;
+            }
+            for (JournalPageId alias : JournalPageIds.aliasesFor(pageId)) {
+                PageContentOverride aliased = pageOverridesById.remove(alias.value());
+                if (aliased != null) {
+                    pageOverridesById.put(pageId.value(), aliased);
+                    saveAfterMigration();
+                    return aliased;
+                }
+            }
+            PageContentOverride legacy = legacyPageOverrides.get(pageIndex);
+            if (legacy != null && legacy.purpose == purpose) {
+                pageOverridesById.put(pageId.value(), legacy);
+                legacyPageOverrides.remove(pageIndex);
+                saveAfterMigration();
+                return legacy;
+            }
+            return null;
+        }
+        return legacyPageOverrides.get(pageIndex);
+    }
+
+    private void saveAfterMigration() {
+        if (migrationSavePending) {
+            return;
+        }
+        migrationSavePending = true;
+        try {
+            save();
+        } finally {
+            migrationSavePending = false;
+        }
+    }
+
+    final class PageContentView {
+        private final JournalPageId pageId;
+        private final int pageIndex;
+        private final JournalPagePurpose purpose;
+
+        private PageContentView(JournalPageId pageId, int pageIndex, JournalPagePurpose purpose) {
+            this.pageId = pageId;
+            this.pageIndex = pageIndex;
+            this.purpose = purpose;
+        }
+
+        String text(JournalPageSlot slot, String defaultValue) {
+            PageContentOverride override = JournalContentStore.this.resolveOverride(pageId, pageIndex, purpose);
+            return override == null ? defaultValue : override.slots().getOrDefault(slot, defaultValue);
+        }
+
+        void putText(JournalPageSlot slot, String value) {
+            JournalContentStore.this.putText(pageId, pageIndex, purpose, slot, value);
+        }
     }
 
     private static final class PageContentOverride {
@@ -121,6 +222,7 @@ final class JournalContentStore {
     }
 
     private static final class SerializedContent {
+        Map<String, SerializedPage> pagesById;
         Map<String, SerializedPage> pages;
     }
 

@@ -91,9 +91,6 @@ final class BookPageTexturePipeline {
         RenderRegionSize size = renderRegionSize(pageSide);
         float normalizedU = (texU - minU) / Math.max(0.0001f, maxU - minU);
         float normalizedV = (texV - minV) / Math.max(0.0001f, maxV - minV);
-        if (pageSide == BookPageSide.LEFT) {
-            normalizedU = 1.0f - normalizedU;
-        }
         return new LocalTexturePoint(normalizedU * size.width(), normalizedV * size.height());
     }
 
