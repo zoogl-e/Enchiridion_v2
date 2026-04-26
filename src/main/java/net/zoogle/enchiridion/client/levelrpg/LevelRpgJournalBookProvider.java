@@ -7,6 +7,7 @@ import net.zoogle.enchiridion.api.BookFrontCoverCardState;
 import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageProvider;
+import net.zoogle.enchiridion.api.BookTextBlock;
 import net.zoogle.enchiridion.api.BookProjectionView;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.api.BookTrackedRegion;
@@ -16,23 +17,43 @@ import java.util.List;
 
 public final class LevelRpgJournalBookProvider implements BookPageProvider, BookTemplateDebugProvider {
     private static final LevelRpgJournalIntroFlowState INTRO_FLOW = LevelRpgJournalIntroFlowState.get();
+    private static final LevelRpgJournalActionPolicy ACTION_POLICY = new LevelRpgJournalActionPolicy();
+    private static final int FRONT_COVER_SPREAD_INDEX = 0;
+    private static final int INTERIOR_SPREAD_OFFSET = 1;
+    private static final int INTERIOR_PAGE_OFFSET = 2;
 
     @Override
     public int spreadCount(BookContext context) {
-        return document(context).spreads().size();
+        return document(context).spreads().size() + INTERIOR_SPREAD_OFFSET;
     }
 
     @Override
     public BookSpread getSpread(BookContext context, int spreadIndex) {
+        if (spreadIndex == FRONT_COVER_SPREAD_INDEX) {
+            if (INTRO_FLOW.isUnbound(context)) {
+                return BookSpread.of(BookPage.empty(), BookPage.empty());
+            }
+            String playerName = context != null && context.player() != null
+                    ? context.player().getName().getString()
+                    : "Wanderer";
+            BookPage rightPage = BookPage.of(
+                    BookTextBlock.title(Component.literal(playerName + "'s Legacy"))
+            );
+            return BookSpread.of(BookPage.empty(), rightPage);
+        }
         List<BookSpread> spreads = document(context).spreads();
-        return spreadIndex >= 0 && spreadIndex < spreads.size()
-                ? spreads.get(spreadIndex)
+        int interiorIndex = spreadIndex - INTERIOR_SPREAD_OFFSET;
+        return interiorIndex >= 0 && interiorIndex < spreads.size()
+                ? spreads.get(interiorIndex)
                 : BookSpread.of(BookPage.empty(), BookPage.empty());
     }
 
     @Override
     public List<BookInteractiveRegion> interactiveRegions(BookContext context, int spreadIndex) {
-        return document(context).interactiveRegionsBySpread().getOrDefault(spreadIndex, List.of());
+        if (spreadIndex == FRONT_COVER_SPREAD_INDEX) {
+            return List.of();
+        }
+        return document(context).interactiveRegionsBySpread().getOrDefault(spreadIndex - INTERIOR_SPREAD_OFFSET, List.of());
     }
 
     @Override
@@ -41,7 +62,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
             return List.of();
         }
         BookTrackedRegion frontRegion = frontCoverTrackedRegion(context);
-        return frontRegion == null ? List.of() : List.of(frontRegion);
+        return frontRegion != null ? List.of(frontRegion) : List.of();
     }
 
     @Override
@@ -50,38 +71,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
             return null;
         }
         INTRO_FLOW.syncToTruth(context);
-        BookProjectionView archetypeProjection = archetypeProjection(context, focusId);
-        if (archetypeProjection != null) {
-            return archetypeProjection;
-        }
-        LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
-        for (JournalSkillEntry skill : snapshot.skills()) {
-            if (!focusId.equals(skill.name())) {
-                continue;
-            }
-            float progress = skill.masteryRequiredForNextLevel() <= 0L
-                    ? 1.0f
-                    : Math.clamp((float) skill.masteryProgress() / (float) skill.masteryRequiredForNextLevel(), 0.0f, 1.0f);
-            return new BookProjectionView(
-                    skill.name(),
-                    Component.literal(skill.name()),
-                    Component.literal(String.valueOf(skill.investedSkillLevel())),
-                    Component.literal("Mastery " + skill.masteryLevel()),
-                    Component.literal(compactSkillDescription(skill.roleSummary())),
-                    Component.literal("Mastery " + skill.masteryProgressText()),
-                    progress,
-                    Component.literal(skill.canSpendSkillPoint()
-                            ? "A Skill Point is ready for this discipline."
-                            : "No Skill Point is ready for this discipline."),
-                    skill.canSpendSkillPoint(),
-                    skill.canSpendSkillPoint() ? Component.literal("Spend Point") : null,
-                    skill.canSpendSkillPoint()
-                            ? (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
-                            && LevelRpgJournalInteractionBridge.requestSpendSkillPoint(bookContext, skill.name())
-                            : null
-            );
-        }
-        return null;
+        return archetypeProjection(context, focusId);
     }
 
     @Override
@@ -96,28 +86,30 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
 
     @Override
     public int spreadForProjectionFocus(BookContext context, String focusId) {
-        return document(context).projectionSpreadByFocus().getOrDefault(focusId, -1);
+        int interiorSpread = document(context).projectionSpreadByFocus().getOrDefault(focusId, -1);
+        return interiorSpread < 0 ? -1 : interiorSpread + INTERIOR_SPREAD_OFFSET;
     }
 
     @Override
     public int pageIndexForProjectionFocus(BookContext context, String focusId) {
-        return document(context).projectionPageByFocus().getOrDefault(focusId, -1);
+        int interiorPage = document(context).projectionPageByFocus().getOrDefault(focusId, -1);
+        return interiorPage < 0 ? -1 : interiorPage + INTERIOR_PAGE_OFFSET;
     }
 
     @Override
     public String templatePurposeForPageIndex(BookContext context, int pageIndex) {
-        return document(context).pagePurposeByPage().get(pageIndex);
+        return document(context).pagePurposeByPage().get(pageIndex - INTERIOR_PAGE_OFFSET);
     }
 
     @Override
     public String templatePageIdForPageIndex(BookContext context, int pageIndex) {
-        return document(context).pageIdByPage().get(pageIndex);
+        return document(context).pageIdByPage().get(pageIndex - INTERIOR_PAGE_OFFSET);
     }
 
     @Override
     public int initialSpreadIndex(BookContext context) {
         INTRO_FLOW.syncToTruth(context);
-        int preferred = 1;
+        int preferred = firstReadableSpreadIndex();
         return Math.clamp(preferred, 0, Math.max(0, spreadCount(context) - 1));
     }
 
@@ -139,7 +131,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
 
     @Override
     public boolean isFrontSpread(BookContext context, int spreadIndex) {
-        return spreadIndex == 0;
+        return spreadIndex == FRONT_COVER_SPREAD_INDEX;
     }
 
     @Override
@@ -161,8 +153,6 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
             if (!unbound && (selectedArchetypeId == null || !focusId.equals(selectedArchetypeId.toString()))) {
                 return null;
             }
-            LevelRpgJournalIntroFlowState flow = LevelRpgJournalIntroFlowState.get();
-            flow.setSelectedFocus(choice.focusId());
             return new BookProjectionView(
                     choice.focusId(),
                     Component.literal(choice.title()),
@@ -175,8 +165,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
                     unbound,
                     unbound ? Component.literal("Bind Archetype") : null,
                     unbound
-                            ? (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
-                            && LevelRpgJournalInteractionBridge.beginArchetypeBinding(bookContext, choice.focusId())
+                            ? (bookContext, spreadIndex, mouseButton) -> ACTION_POLICY.bindArchetype(bookContext, choice.focusId(), mouseButton)
                             : null
             );
         }
@@ -189,14 +178,14 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
             return null;
         }
         String focusId = focusIdForCardState(cardState);
-        Component hoverText = cardState.visible()
-                ? Component.literal("Recall the archetype bound into the cover.")
+        Component hoverText = cardState.boundArchetypeId() != null
+                ? Component.literal("Your archetype is inscribed into this journal.")
                 : Component.literal("Seat an archetype card in the waiting recess.");
         return BookTrackedRegion.of(
                 BookTrackedRegion.Anchor.FRONT_COVER_CARD,
                 hoverText,
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
-                        && handleFrontCoverCardInteraction(bookContext, cardState, focusId)
+                        && ACTION_POLICY.handleFrontCoverCardInteraction(bookContext, cardState, focusId)
         );
     }
 
@@ -237,13 +226,6 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
         return displayId == null ? null : displayId.toString();
     }
 
-    private static boolean handleFrontCoverCardInteraction(BookContext context, BookFrontCoverCardState cardState, String focusId) {
-        if (cardState.boundArchetypeId() != null && focusId != null && !focusId.isBlank()) {
-            return LevelRpgJournalInteractionBridge.openArchetypeProjection(context, focusId);
-        }
-        return LevelRpgJournalInteractionBridge.beginArchetypeSelection(context);
-    }
-
     private static String adjacentProjectionFocus(List<String> focusOrder, String currentFocusId, int direction) {
         if (currentFocusId == null || currentFocusId.isBlank() || focusOrder.isEmpty()) {
             return null;
@@ -256,17 +238,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
         return focusOrder.get(nextIndex);
     }
 
-    private static String compactSkillDescription(String description) {
-        if (description == null || description.isBlank()) {
-            return "No field note is inscribed for this discipline.";
-        }
-        String trimmed = description.trim();
-        for (int index = 0; index < trimmed.length(); index++) {
-            char c = trimmed.charAt(index);
-            if (c == '.' || c == '!' || c == '?') {
-                return trimmed.substring(0, index + 1).trim();
-            }
-        }
-        return trimmed;
+    private static int firstReadableSpreadIndex() {
+        return INTERIOR_SPREAD_OFFSET;
     }
 }

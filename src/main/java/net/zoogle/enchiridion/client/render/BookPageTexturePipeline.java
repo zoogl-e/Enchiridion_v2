@@ -15,6 +15,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.AlphaComposite;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferInt;
@@ -44,6 +45,8 @@ final class BookPageTexturePipeline {
 
     private final PageCanvasRenderer pageCanvasRenderer = new PageCanvasRenderer();
     private final BufferedImage transparentCanvas;
+    private final PageTextureComposer pageTextureComposer;
+    private final TextureUploadBackend textureUploadBackend = new TextureUploadBackend();
     private final DynamicTexture leftDynamicTexture;
     private final DynamicTexture rightDynamicTexture;
     private final ResourceLocation leftTextureLocation;
@@ -58,6 +61,7 @@ final class BookPageTexturePipeline {
 
     BookPageTexturePipeline() {
         this.transparentCanvas = new BufferedImage(DYNAMIC_TEXTURE_SIZE, DYNAMIC_TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        this.pageTextureComposer = new PageTextureComposer(pageCanvasRenderer, transparentCanvas);
         this.leftDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
         this.rightDynamicTexture = new DynamicTexture(transparentCanvas.getWidth(), transparentCanvas.getHeight(), false);
         this.leftTextureLocation = Minecraft.getInstance().getTextureManager().register(LEFT_TEXTURE_PREFIX, leftDynamicTexture);
@@ -145,8 +149,9 @@ final class BookPageTexturePipeline {
             PageInteractiveNode leftHoveredInteractiveNode,
             PageInteractiveNode rightHoveredInteractiveNode
     ) {
-        int leftPageNumber = (spreadIndex * 2) + 1;
-        int rightPageNumber = leftPageNumber + 1;
+        // Front cover (spread 0) should never show page numbers.
+        Integer leftPageNumber = spreadIndex == 0 ? null : (spreadIndex * 2) + 1;
+        Integer rightPageNumber = spreadIndex == 0 ? null : leftPageNumber + 1;
         float leftFocusStrength = focusedPageSide == BookPageSide.LEFT ? 1.0f : 0.0f;
         float rightFocusStrength = focusedPageSide == BookPageSide.RIGHT ? 1.0f : 0.0f;
         updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, focusGlitchStrength(glitchStrength, leftFocusStrength), leftFocusStrength, 0, true, leftPageNumber, leftInteractiveNodes, leftHoveredInteractiveNode);
@@ -173,91 +178,27 @@ final class BookPageTexturePipeline {
             java.util.List<PageInteractiveNode> interactiveNodes,
             PageInteractiveNode hoveredInteractiveNode
     ) {
-        BufferedImage composed = copyImage(transparentCanvas);
-        Graphics2D graphics = composed.createGraphics();
-
-        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setFont(new Font("Serif", Font.PLAIN, 14));
-
-        int regionX = uvToPixelX(u0, composed.getWidth());
-        int regionY = uvToPixelY(v0, composed.getHeight());
-        int regionW = Math.max(4, uvToPixelX(u1, composed.getWidth()) - regionX);
-        int regionH = Math.max(4, uvToPixelY(v1, composed.getHeight()) - regionY);
+        int regionX = uvToPixelX(u0, transparentCanvas.getWidth());
+        int regionY = uvToPixelY(v0, transparentCanvas.getHeight());
+        int regionW = Math.max(4, uvToPixelX(u1, transparentCanvas.getWidth()) - regionX);
+        int regionH = Math.max(4, uvToPixelY(v1, transparentCanvas.getHeight()) - regionY);
         boolean hasFocusedSide = focusStrength > 0.01f || glitchStrength > 0.01f;
         float effectiveTextAlpha = focusStrength > 0.01f ? textAlpha : (hasFocusedSide ? textAlpha * 0.38f : textAlpha);
-
-        if (MAGIC_TEXT_PANEL_ALPHA > 0) {
-            graphics.setColor(new Color(230, 220, 200, MAGIC_TEXT_PANEL_ALPHA));
-            graphics.fillRect(regionX, regionY, regionW, regionH);
-        }
-        BufferedImage pageImage = new BufferedImage(regionW, regionH, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D pageGraphics = pageImage.createGraphics();
-        pageGraphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        pageGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        pageGraphics.setFont(new Font("Serif", Font.PLAIN, 14));
-        pageCanvasRenderer.renderPageTextOnlyToGraphics2D(
-                pageGraphics,
+        BufferedImage composed = pageTextureComposer.compose(
                 page,
-                0,
-                0,
+                regionX,
+                regionY,
                 regionW,
                 regionH,
                 effectiveTextAlpha,
-                horizontalInset,
-                pageNumber,
                 glitchStrength,
+                horizontalInset,
+                mirrorHorizontally,
+                pageNumber,
                 interactiveNodes,
                 hoveredInteractiveNode
         );
-        pageGraphics.dispose();
-
-        if (mirrorHorizontally) {
-            graphics.drawImage(
-                    pageImage,
-                    regionX + regionW,
-                    regionY,
-                    regionX,
-                    regionY + regionH,
-                    0,
-                    0,
-                    pageImage.getWidth(),
-                    pageImage.getHeight(),
-                    null
-            );
-        } else {
-            graphics.drawImage(pageImage, regionX, regionY, null);
-        }
-        graphics.dispose();
-
-        uploadBufferedImage(targetTexture, composed);
-    }
-
-    private void uploadBufferedImage(DynamicTexture targetTexture, BufferedImage image) {
-        NativeImage pixels = targetTexture.getPixels();
-        if (pixels == null || pixels.getWidth() != image.getWidth() || pixels.getHeight() != image.getHeight()) {
-            pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
-            targetTexture.setPixels(pixels);
-        }
-
-        int[] argbPixels = argbPixels(image);
-        int width = image.getWidth();
-        int height = image.getHeight();
-        for (int y = 0; y < height; y++) {
-            int rowOffset = y * width;
-            for (int x = 0; x < width; x++) {
-                pixels.setPixelRGBA(x, y, argbToAbgr(argbPixels[rowOffset + x]));
-            }
-        }
-        targetTexture.upload();
-    }
-
-    private static BufferedImage copyImage(BufferedImage source) {
-        BufferedImage copy = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics = copy.createGraphics();
-        graphics.drawImage(source, 0, 0, null);
-        graphics.dispose();
-        return copy;
+        textureUploadBackend.uploadBufferedImage(targetTexture, composed);
     }
 
     private static int[] argbPixels(BufferedImage image) {
@@ -330,6 +271,115 @@ final class BookPageTexturePipeline {
             key = 31 * key + interactiveNodeKey(node);
         }
         return key;
+    }
+
+    private static final class PageTextureComposer {
+        private final PageCanvasRenderer renderer;
+        private final BufferedImage templateCanvas;
+        private final BufferedImage composedCanvas;
+        private final BufferedImage pageCanvas;
+
+        private PageTextureComposer(PageCanvasRenderer renderer, BufferedImage templateCanvas) {
+            this.renderer = renderer;
+            this.templateCanvas = templateCanvas;
+            this.composedCanvas = new BufferedImage(templateCanvas.getWidth(), templateCanvas.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            this.pageCanvas = new BufferedImage(templateCanvas.getWidth(), templateCanvas.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        }
+
+        private BufferedImage compose(
+                BookPage page,
+                int regionX,
+                int regionY,
+                int regionW,
+                int regionH,
+                float effectiveTextAlpha,
+                float glitchStrength,
+                int horizontalInset,
+                boolean mirrorHorizontally,
+                Integer pageNumber,
+                java.util.List<PageInteractiveNode> interactiveNodes,
+                PageInteractiveNode hoveredInteractiveNode
+        ) {
+            Graphics2D composedGraphics = composedCanvas.createGraphics();
+            clear(composedGraphics, composedCanvas.getWidth(), composedCanvas.getHeight());
+            composedGraphics.drawImage(templateCanvas, 0, 0, null);
+            setupGraphics(composedGraphics);
+            if (MAGIC_TEXT_PANEL_ALPHA > 0) {
+                composedGraphics.setColor(new Color(230, 220, 200, MAGIC_TEXT_PANEL_ALPHA));
+                composedGraphics.fillRect(regionX, regionY, regionW, regionH);
+            }
+
+            Graphics2D pageGraphics = pageCanvas.createGraphics();
+            clear(pageGraphics, pageCanvas.getWidth(), pageCanvas.getHeight());
+            setupGraphics(pageGraphics);
+            renderer.renderPageTextOnlyToGraphics2D(
+                    pageGraphics,
+                    page,
+                    0,
+                    0,
+                    regionW,
+                    regionH,
+                    effectiveTextAlpha,
+                    horizontalInset,
+                    pageNumber,
+                    glitchStrength,
+                    interactiveNodes,
+                    hoveredInteractiveNode
+            );
+            pageGraphics.dispose();
+
+            if (mirrorHorizontally) {
+                composedGraphics.drawImage(
+                        pageCanvas,
+                        regionX + regionW,
+                        regionY,
+                        regionX,
+                        regionY + regionH,
+                        0,
+                        0,
+                        regionW,
+                        regionH,
+                        null
+                );
+            } else {
+                composedGraphics.drawImage(pageCanvas, regionX, regionY, regionX + regionW, regionY + regionH, 0, 0, regionW, regionH, null);
+            }
+            composedGraphics.dispose();
+            return composedCanvas;
+        }
+
+        private static void setupGraphics(Graphics2D graphics) {
+            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.setFont(new Font("Serif", Font.PLAIN, 14));
+        }
+
+        private static void clear(Graphics2D graphics, int width, int height) {
+            graphics.setComposite(AlphaComposite.Clear);
+            graphics.fillRect(0, 0, width, height);
+            graphics.setComposite(AlphaComposite.SrcOver);
+        }
+    }
+
+    private static final class TextureUploadBackend {
+        private void uploadBufferedImage(DynamicTexture targetTexture, BufferedImage image) {
+            NativeImage pixels = targetTexture.getPixels();
+            if (pixels == null || pixels.getWidth() != image.getWidth() || pixels.getHeight() != image.getHeight()) {
+                pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
+                targetTexture.setPixels(pixels);
+            }
+
+            int[] argbPixels = argbPixels(image);
+            int width = image.getWidth();
+            int height = image.getHeight();
+            for (int y = 0; y < height; y++) {
+                int rowOffset = y * width;
+                for (int x = 0; x < width; x++) {
+                    pixels.setPixelRGBA(x, y, argbToAbgr(argbPixels[rowOffset + x]));
+                }
+            }
+            targetTexture.upload();
+        }
     }
 
     record TextureSet(ResourceLocation baseTexture, ResourceLocation magicLeftTexture, ResourceLocation magicRightTexture) {}

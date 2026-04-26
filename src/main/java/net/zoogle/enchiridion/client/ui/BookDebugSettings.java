@@ -3,17 +3,12 @@ package net.zoogle.enchiridion.client.ui;
 import net.zoogle.enchiridion.client.levelrpg.JournalPageStyleSystem;
 
 public final class BookDebugSettings {
-    private static boolean showGuiTextDebug = false;
     private static boolean templateRegionsDebug = false;
     private static boolean measuredTextBoundsDebug = false;
     private static boolean interactionBoundsDebug = false;
     private static boolean debugLabels = false;
 
     private BookDebugSettings() {}
-
-    public static boolean showGuiTextDebug() {
-        return showGuiTextDebug;
-    }
 
     public static boolean pageLocalInteractionDebug() {
         return interactionBoundsDebug;
@@ -48,15 +43,13 @@ public final class BookDebugSettings {
     }
 
     public static boolean anyDebugEnabled() {
-        return showGuiTextDebug
-                || templateRegionsDebug
+        return templateRegionsDebug
                 || measuredTextBoundsDebug
                 || interactionBoundsDebug
                 || debugLabels;
     }
 
     public static void setAllDebugEnabled(boolean enabled) {
-        showGuiTextDebug = enabled;
         templateRegionsDebug = enabled;
         measuredTextBoundsDebug = enabled;
         interactionBoundsDebug = enabled;

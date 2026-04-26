@@ -46,16 +46,6 @@ public final class LevelRpgJournalInteractionBridge {
         }
     }
 
-    static boolean openSkillProjection(BookContext context, String journalSkillName) {
-        if (context == null || context.minecraft() == null || journalSkillName == null || journalSkillName.isBlank()) {
-            return false;
-        }
-        if (context.minecraft().screen instanceof BookScreen bookScreen) {
-            return bookScreen.openSkillProjection(journalSkillName);
-        }
-        return false;
-    }
-
     static boolean requestSpendSkillPoint(BookContext context, String journalSkillName) {
         if (context == null || context.minecraft() == null || context.player() == null || journalSkillName == null) {
             return false;

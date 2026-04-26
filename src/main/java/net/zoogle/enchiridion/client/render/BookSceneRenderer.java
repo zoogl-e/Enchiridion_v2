@@ -2,21 +2,22 @@ package net.zoogle.enchiridion.client.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.math.Axis;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.zoogle.enchiridion.api.BookTrackedRegion;
-import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
-import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookFrontCoverCardState;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.anim.BookAnimationSpec;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
 import net.zoogle.enchiridion.client.levelrpg.ArchetypeReelState;
+import net.zoogle.enchiridion.client.levelrpg.JournalArchetypeChoice;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
+import net.zoogle.enchiridion.client.ui.BookInteractionGeometry;
 import net.zoogle.enchiridion.client.ui.BookLayout;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
-import software.bernie.geckolib.renderer.GeoObjectRenderer;
 
 import java.util.List;
 
@@ -24,7 +25,7 @@ import java.util.List;
  * v2 internal scene renderer backed by GeckoLib.
  * This stays inside Enchiridion; external books still provide content only.
  */
-public final class BookSceneRenderer {
+public final class BookSceneRenderer implements BookInteractionGeometry {
     public static final float PROJECTION_BOOK_Y_OFFSET = 200.0f;
     public static final float PROJECTION_FOCUS_X_OFFSET = 200.0f;
     public static final float PROJECTION_ZOOM_SCALE = 2.5f;
@@ -44,27 +45,48 @@ public final class BookSceneRenderer {
     private static final float MAX_TILT_PITCH_DEGREES = 5.0f;
     private static final float MAX_INSPECT_PITCH_DEGREES = 28.0f;
     private static final float CLOSED_PRESENTATION_YAW = 0f;
-    private static final float PAGE_PICK_CAMERA_DEPTH = 1600.0f;
+    static final float PAGE_PICK_CAMERA_DEPTH = 1600.0f;
     private static final float MODEL_UNIT = 1.0f / 16.0f;
     private static final float BOOK_PIVOT_X = 0.0f;
     private static final float BOOK_PIVOT_Y = 45.0f;
     private static final float BOOK_PIVOT_Z = 1.5f;
     private static final float PAGE_SURFACE_DEPTH = 0.05f;
-    private static final float REEL_SCENE_SCALE = 18.0f;
     private static final float REEL_SCENE_Z = GUI_Z + 24.0f;
     private static final float SKILLTREE_BOOK_SCALE = 0.74f;
     private static final float SKILLTREE_BOOK_Y_OFFSET = -46.0f;
     private static final float SKILLTREE_BOOK_X_OFFSET = 58.0f;
+    /** Extra screen-space Y (positive = downward) while the archetype reel is open. */
+    private static final float REEL_BOOK_EXTRA_DOWN = 118.0f;
 
     private static final EnchiridionBookRenderer BOOK_RENDERER = new EnchiridionBookRenderer();
     private final EnchiridionBookAnimatable bookAnimatable = new EnchiridionBookAnimatable();
     private final BookPageTexturePipeline pageTexturePipeline = new BookPageTexturePipeline();
     private final ArchetypeReelSceneRenderer archetypeReelRenderer = new ArchetypeReelSceneRenderer();
+    private final ReelPresentationProfile reelPresentationProfile = ReelPresentationProfile.defaultProfile(REEL_SCENE_Z);
     private float currentTiltYaw;
     private float currentTiltPitch;
     private float currentClosedHoverScale = 1.0f;
     private float currentInspectYaw;
     private float currentInspectPitch;
+    private @Nullable ArchetypeReelState presentationReelState;
+    private int presentationViewportWidth;
+    private int presentationViewportHeight;
+
+    /**
+     * Per-frame presentation context: reel state (when active) and GUI viewport for centered reel placement.
+     * Call from the book screen at the start of {@code render} and {@link #endPresentationFrame()} in {@code finally}.
+     */
+    public void beginPresentationFrame(@Nullable ArchetypeReelState archetypeReelState, int viewportWidth, int viewportHeight) {
+        this.presentationReelState = archetypeReelState != null && archetypeReelState.active() ? archetypeReelState : null;
+        this.presentationViewportWidth = viewportWidth;
+        this.presentationViewportHeight = viewportHeight;
+    }
+
+    public void endPresentationFrame() {
+        this.presentationReelState = null;
+        this.presentationViewportWidth = 0;
+        this.presentationViewportHeight = 0;
+    }
 
     public PageSurfaceBounds pageSurfaceBounds(
             BookLayout layout,
@@ -136,9 +158,9 @@ public final class BookSceneRenderer {
                 bounds.localHeight()
         );
         if (point != null) {
-            return point;
+            return toCanvasLocalPoint(point, pageSide);
         }
-        return resolvePointInTriangle(
+        PageLocalPoint point2 = resolvePointInTriangle(
                 bounds,
                 mousePoint,
                 bounds.topLeft(),
@@ -151,6 +173,20 @@ public final class BookSceneRenderer {
                 0.0f,
                 bounds.localHeight()
         );
+        return point2 == null ? null : toCanvasLocalPoint(point2, pageSide);
+    }
+
+    /**
+     * The captured left page surface has localX=0 at the spine (screen-right) because the
+     * GeckoLib bone UVs are oriented with u=0 at the spine side. The page texture is rendered
+     * with mirrorHorizontally=true so that canvas x=0 appears at the outer/left edge on screen.
+     * This converts raw texture-space localX back to canvas-space localX (x=0 = outer left edge).
+     */
+    private static PageLocalPoint toCanvasLocalPoint(PageLocalPoint raw, BookPageSide pageSide) {
+        if (pageSide != BookPageSide.LEFT) {
+            return raw;
+        }
+        return new PageLocalPoint(raw.bounds(), raw.bounds().localWidth() - raw.localX(), raw.localY());
     }
 
     public ScreenRect projectPageRect(
@@ -201,6 +237,22 @@ public final class BookSceneRenderer {
             int localHeight
     ) {
         PageSurfaceBounds bounds = pageSurfaceBounds(layout, state, animationProgress, projectionProgress, projectionFocusOffset, pageSide);
+        if (pageSide == BookPageSide.LEFT) {
+            // Canvas x=0 is the outer/left edge (screen-left), but the captured surface has
+            // localX=0 at the spine (screen-right). Convert canvas coords to texture coords
+            // before projecting: texX = totalWidth - canvasX. The quad corners become:
+            //   topLeft  (screen-left) = canvas left edge  → tex totalW - localX
+            //   topRight (screen-right) = canvas right edge → tex totalW - localX - localWidth
+            int totalW = Math.round(bounds.localWidth());
+            int texRight = totalW - localX;
+            int texLeft = totalW - localX - localWidth;
+            return new ScreenQuad(
+                    projectPagePoint(bounds, texRight, localY),
+                    projectPagePoint(bounds, texLeft, localY),
+                    projectPagePoint(bounds, texLeft, localY + localHeight),
+                    projectPagePoint(bounds, texRight, localY + localHeight)
+            );
+        }
         return new ScreenQuad(
                 projectPagePoint(bounds, localX, localY),
                 projectPagePoint(bounds, localX + localWidth, localY),
@@ -233,9 +285,7 @@ public final class BookSceneRenderer {
             float projectionFocusOffset,
             BookTrackedRegion.Anchor anchor
     ) {
-        EnchiridionBookRenderer.CapturedSurface surface = switch (anchor) {
-            case FRONT_COVER_CARD -> EnchiridionBookRenderer.capturedArchetypeCardSurface();
-        };
+        EnchiridionBookRenderer.CapturedSurface surface = EnchiridionBookRenderer.capturedArchetypeCardSurface();
         if (surface != null) {
             return new ScreenQuad(surface.topLeft(), surface.topRight(), surface.bottomRight(), surface.bottomLeft());
         }
@@ -283,23 +333,24 @@ public final class BookSceneRenderer {
         bookAnimatable.setMagicTextTextureLocations(textures.magicLeftTexture(), textures.magicRightTexture());
         bookAnimatable.setFrontCoverCardState(frontCoverCardState);
         bookAnimatable.setReadableSurfaceTargets(leftSurfaceTargetFor(state), rightSurfaceTargetFor(state));
-        PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, inspectYaw);
-        ReelPresentationTransform reelPresentation = reelPresentationTransform(layout);
+        PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, inspectYaw, partialTick);
+        ReelFrameSnapshot reelFrame = reelFrameSnapshot(layout, archetypeReelState);
 
         graphics.flush();
         RenderSystem.enableDepthTest();
 
         var poseStack = graphics.pose();
-        if (archetypeReelState != null && archetypeReelState.active()) {
+        if (archetypeReelState != null && archetypeReelState.active() && reelFrame != null) {
             poseStack.pushPose();
-            poseStack.translate(reelPresentation.centerX(), reelPresentation.centerY(), reelPresentation.centerZ());
+            poseStack.translate(reelFrame.presentation().centerX(), reelFrame.presentation().centerY(), reelFrame.presentation().centerZ());
             archetypeReelRenderer.render(
                     poseStack,
                     graphics.bufferSource(),
                     LightTexture.FULL_BRIGHT,
-                    reelPresentation.scale(),
+                    reelFrame.presentation().scale(),
                     ArchetypeReelSceneRenderer.RenderLayer.BACK,
-                    archetypeReelState
+                    archetypeReelState,
+                    reelFrame.layout()
             );
             poseStack.popPose();
         }
@@ -331,16 +382,17 @@ public final class BookSceneRenderer {
         );
 
         poseStack.popPose();
-        if (archetypeReelState != null && archetypeReelState.active()) {
+        if (archetypeReelState != null && archetypeReelState.active() && reelFrame != null) {
             poseStack.pushPose();
-            poseStack.translate(reelPresentation.centerX(), reelPresentation.centerY(), reelPresentation.centerZ());
+            poseStack.translate(reelFrame.presentation().centerX(), reelFrame.presentation().centerY(), reelFrame.presentation().centerZ());
             archetypeReelRenderer.render(
                     poseStack,
                     graphics.bufferSource(),
                     LightTexture.FULL_BRIGHT,
-                    reelPresentation.scale(),
+                    reelFrame.presentation().scale(),
                     ArchetypeReelSceneRenderer.RenderLayer.FRONT,
-                    archetypeReelState
+                    archetypeReelState,
+                    reelFrame.layout()
             );
             poseStack.popPose();
         }
@@ -348,39 +400,110 @@ public final class BookSceneRenderer {
     }
 
     public Integer hoveredArchetypeReelCardIndex(BookLayout layout, ArchetypeReelState state, double mouseX, double mouseY) {
-        if (state == null || !state.active()) {
+        ReelFrameSnapshot snapshot = reelFrameSnapshot(layout, state);
+        if (snapshot == null) {
             return null;
         }
-        ReelPresentationTransform presentation = reelPresentationTransform(layout);
-        java.util.List<ArchetypeReelSceneRenderer.PlacedCard> cards = archetypeReelRenderer.layout(state).cards();
-        for (int index = cards.size() - 1; index >= 0; index--) {
-            ArchetypeReelSceneRenderer.PlacedCard card = cards.get(index);
-            ScreenQuad quad = projectArchetypeReelCardQuad(presentation, card);
-            if (containsPoint(quad, (float) mouseX, (float) mouseY)) {
-                return card.index();
+        return HitTestEngine.pickTopMostCardIndex(snapshot.projections(), (float) mouseX, (float) mouseY);
+    }
+
+    public ScreenRect focusedArchetypeReelCardRect(BookLayout layout, ArchetypeReelState state) {
+        ReelFrameSnapshot snapshot = reelFrameSnapshot(layout, state);
+        if (snapshot == null) {
+            return null;
+        }
+        ReelCardProjection focusedCard = snapshot.focusedProjection();
+        if (focusedCard == null) {
+            return null;
+        }
+        return quadScreenBounds(focusedCard.quad());
+    }
+
+    public void renderArchetypeReelCardTitleOverlays(GuiGraphics graphics, Font font, BookLayout layout, ArchetypeReelState state) {
+        if (layout == null || state == null || !state.active()) {
+            return;
+        }
+        ReelFrameSnapshot snapshot = reelFrameSnapshot(layout, state);
+        if (snapshot == null || snapshot.projections().isEmpty()) {
+            return;
+        }
+        float alpha = state.globalPresentationAlpha();
+        int alphaByte = Math.min(255, Math.round(alpha * 255.0f));
+        int color = (alphaByte << 24) | 0x002A180F;
+        for (ReelCardProjection projection : snapshot.projections()) {
+            JournalArchetypeChoice choice = choiceForIndex(snapshot.layout(), projection.index());
+            if (choice == null) {
+                continue;
+            }
+            ScreenRect bounds = quadScreenBounds(projection.quad());
+            int maxWidth = Math.max(24, (int) bounds.width() - 6);
+            String title = truncateToWidth(font, choice.title(), maxWidth);
+            int textWidth = font.width(title);
+            int drawX = Math.round(bounds.x() + (bounds.width() - textWidth) * 0.5f);
+            // Place inside the projected card face (top band), not floating above the quad.
+            int drawY = Math.round(bounds.y() + Math.max(4.0f, bounds.height() * 0.07f));
+            graphics.drawString(font, title, drawX, drawY, color, false);
+        }
+    }
+
+    private static @Nullable JournalArchetypeChoice choiceForIndex(ArchetypeReelSceneRenderer.ReelLayout layout, int index) {
+        for (ArchetypeReelSceneRenderer.PlacedCard card : layout.cards()) {
+            if (card.index() == index) {
+                return card.choice();
             }
         }
         return null;
     }
 
-    public ScreenRect focusedArchetypeReelCardRect(BookLayout layout, ArchetypeReelState state) {
-        if (state == null || !state.active()) {
-            return null;
-        }
-        ArchetypeReelSceneRenderer.PlacedCard focusedCard = archetypeReelRenderer.layout(state).cards().stream()
-                .filter(ArchetypeReelSceneRenderer.PlacedCard::focused)
-                .findFirst()
-                .orElse(null);
-        if (focusedCard == null) {
-            return null;
-        }
-        ReelPresentationTransform presentation = reelPresentationTransform(layout);
-        ScreenQuad quad = projectArchetypeReelCardQuad(presentation, focusedCard);
+    private static ScreenRect quadScreenBounds(ScreenQuad quad) {
         float left = min(quad.topLeft().x(), quad.topRight().x(), quad.bottomRight().x(), quad.bottomLeft().x());
         float top = min(quad.topLeft().y(), quad.topRight().y(), quad.bottomRight().y(), quad.bottomLeft().y());
         float right = max(quad.topLeft().x(), quad.topRight().x(), quad.bottomRight().x(), quad.bottomLeft().x());
         float bottom = max(quad.topLeft().y(), quad.topRight().y(), quad.bottomRight().y(), quad.bottomLeft().y());
         return new ScreenRect(left, top, Math.max(1.0f, right - left), Math.max(1.0f, bottom - top));
+    }
+
+    /**
+     * Left screen X of the reel card that sits visually to the right of the focused card (for panel width clamping).
+     */
+    public @Nullable Float nextReelCardLeftEdgeToRightOfFocus(BookLayout layout, ArchetypeReelState state) {
+        ReelFrameSnapshot snapshot = reelFrameSnapshot(layout, state);
+        if (snapshot == null || snapshot.focusedProjection() == null) {
+            return null;
+        }
+        ScreenRect focus = quadScreenBounds(snapshot.focusedProjection().quad());
+        float focusCenterX = focus.x() + focus.width() * 0.5f;
+        Float bestLeft = null;
+        for (ReelCardProjection projection : snapshot.projections()) {
+            if (projection.index() == state.focusedIndex()) {
+                continue;
+            }
+            ScreenRect r = quadScreenBounds(projection.quad());
+            float cx = r.x() + r.width() * 0.5f;
+            if (cx > focusCenterX + 24.0f) {
+                bestLeft = bestLeft == null ? r.x() : Math.min(bestLeft, r.x());
+            }
+        }
+        return bestLeft;
+    }
+
+    private static String truncateToWidth(Font font, String text, int maxWidth) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        if (font.width(text) <= maxWidth) {
+            return text;
+        }
+        String ellipsis = "...";
+        int budget = maxWidth - font.width(ellipsis);
+        if (budget <= 0) {
+            return ellipsis;
+        }
+        String trimmed = text;
+        while (trimmed.length() > 1 && font.width(trimmed) > budget) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed + ellipsis;
     }
 
     public void prewarmPageTextures(BookSpread spread, int spreadIndex) {
@@ -476,7 +599,12 @@ public final class BookSceneRenderer {
 
     private static EnchiridionBookAnimatable.ReadableSurfaceTarget rightSurfaceTargetFor(BookAnimState state) {
         return switch (state) {
-            case IDLE_FRONT, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN,
+            // Render the legacy title page texture on the right page bone during front cover state.
+            case IDLE_FRONT -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
+                    EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE,
+                    true
+            );
+            case FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN,
                     IDLE_BACK, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN,
                     IDLE_SKILLTREE, FLIPPING_NEXT_SKILLTREE, FLIPPING_PREV_SKILLTREE, RIFFLING_NEXT_SKILLTREE, RIFFLING_PREV_SKILLTREE,
                     CLOSED, CLOSING, ARRIVING -> EnchiridionBookAnimatable.ReadableSurfaceTarget.none();
@@ -495,7 +623,7 @@ public final class BookSceneRenderer {
             float projectionFocusOffset,
             BookPageSide pageSide
     ) {
-        EnchiridionBookRenderer.CapturedPageSurface captured = BOOK_RENDERER.capturedPageSurface(pageSide);
+        EnchiridionBookRenderer.CapturedPageSurface captured = EnchiridionBookRenderer.capturedPageSurface(pageSide);
         if (captured != null) {
             float left = min(captured.topLeft().x(), captured.topRight().x(), captured.bottomRight().x(), captured.bottomLeft().x());
             float top = min(captured.topLeft().y(), captured.topRight().y(), captured.bottomRight().y(), captured.bottomLeft().y());
@@ -551,7 +679,7 @@ public final class BookSceneRenderer {
             float localX,
             float localY
     ) {
-        PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, currentInspectYaw);
+        PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, currentInspectYaw, 0.0f);
         PageSurfaceMapping surface = pageSurfaceMapping(pageSide);
         Vector3f point = surface.modelPointForLocal(localX, localY);
         point.mul(presentation.scaleX(), presentation.scaleY(), presentation.scaleZ());
@@ -608,18 +736,24 @@ public final class BookSceneRenderer {
             float animationProgress,
             float projectionProgress,
             float projectionFocusOffset,
-            float inspectYaw
+            float inspectYaw,
+            float partialTick
     ) {
         float closedness = closednessFor(state, animationProgress);
         float centerOffsetX = OPEN_CENTER_X_OFFSET + ((CLOSED_CENTER_X_OFFSET - OPEN_CENTER_X_OFFSET) * closedness);
         float wrappedInspectYaw = wrapDegrees(inspectYaw);
         float backFacingShift = Math.abs(wrappedInspectYaw) > 90.0f ? layout.bookWidth() * closedness : 0.0f;
-        float skilltreeOffsetX = isSkilltreeState(state) ? SKILLTREE_BOOK_X_OFFSET : 0.0f;
-        float skilltreeOffsetY = isSkilltreeState(state) ? SKILLTREE_BOOK_Y_OFFSET : 0.0f;
+        boolean reelOpen = presentationReelState != null;
+        float skilltreeOffsetX = (!reelOpen && isSkilltreeState(state)) ? SKILLTREE_BOOK_X_OFFSET : 0.0f;
+        float skilltreeOffsetY = (!reelOpen && isSkilltreeState(state)) ? SKILLTREE_BOOK_Y_OFFSET : 0.0f;
+        float reelLowerY = 0.0f;
+        if (presentationReelState != null) {
+            reelLowerY = REEL_BOOK_EXTRA_DOWN * presentationReelState.reelBookLowerBlend(partialTick);
+        }
         float centerX = layout.bookX() + (layout.bookWidth() / 2.0f) + centerOffsetX + backFacingShift + projectionFocusOffset + skilltreeOffsetX;
-        float centerY = layout.bookY() + (layout.bookHeight() / 2.0f) + projectionVerticalOffset(projectionProgress) + MODEL_Y_OFFSET + skilltreeOffsetY;
+        float centerY = layout.bookY() + (layout.bookHeight() / 2.0f) + projectionVerticalOffset(projectionProgress) + MODEL_Y_OFFSET + skilltreeOffsetY + reelLowerY;
         float projectionScale = 1.0f + ((PROJECTION_ZOOM_SCALE - 1.0f) * clamp(projectionProgress, 0.0f, 1.0f));
-        float skilltreeScale = isSkilltreeState(state) ? SKILLTREE_BOOK_SCALE : 1.0f;
+        float skilltreeScale = (!reelOpen && isSkilltreeState(state)) ? SKILLTREE_BOOK_SCALE : 1.0f;
         float baseScale = MODEL_SCALE * currentClosedHoverScale * projectionScale * skilltreeScale;
         return new PresentationTransform(
                 centerX,
@@ -634,11 +768,24 @@ public final class BookSceneRenderer {
     }
 
     private ReelPresentationTransform reelPresentationTransform(BookLayout layout) {
+        float reelCenterX;
+        float reelCenterY;
+        if (presentationReelState != null && presentationViewportWidth > 0 && presentationViewportHeight > 0) {
+            // Focused card uses local origin ~0; placing reel root at horizontal screen center centers the hero card.
+            reelCenterX = (presentationViewportWidth * 0.5f) + reelPresentationProfile.horizontalBiasPixels();
+            float fromBookBand = layout.bookY() + layout.bookHeight() * 0.12f;
+            float fromViewport = presentationViewportHeight * 0.30f;
+            reelCenterY = Math.min(fromViewport, fromBookBand) + reelPresentationProfile.anchorOffsetY();
+            reelCenterY = Math.max(72.0f, Math.min(reelCenterY, presentationViewportHeight - 80.0f));
+        } else {
+            reelCenterX = layout.bookX() + (layout.bookWidth() / 2.0f);
+            reelCenterY = layout.bookY() + (layout.bookHeight() / 2.0f) + reelPresentationProfile.anchorOffsetY();
+        }
         return new ReelPresentationTransform(
-                layout.bookX() + (layout.bookWidth() / 2.0f) - 58.0f,
-                layout.bookY() + (layout.bookHeight() / 2.0f) + 34.0f,
-                REEL_SCENE_Z,
-                19.5f
+                reelCenterX,
+                reelCenterY,
+                reelPresentationProfile.centerZ(),
+                reelPresentationProfile.scale()
         );
     }
 
@@ -652,34 +799,31 @@ public final class BookSceneRenderer {
         return new ScreenPoint(lerp(topX, bottomX, v), lerp(topY, bottomY, v));
     }
 
-    private ScreenQuad projectArchetypeReelCardQuad(ReelPresentationTransform presentation, ArchetypeReelSceneRenderer.PlacedCard card) {
-        float halfWidth = (59.0f / 16.0f) * 0.5f;
-        float halfHeight = (80.0f / 16.0f) * 0.5f;
-        float depth = 0.04f;
-        return new ScreenQuad(
-                projectArchetypeReelPoint(presentation, card, -halfWidth, -halfHeight, depth),
-                projectArchetypeReelPoint(presentation, card, halfWidth, -halfHeight, depth),
-                projectArchetypeReelPoint(presentation, card, halfWidth, halfHeight, depth),
-                projectArchetypeReelPoint(presentation, card, -halfWidth, halfHeight, depth)
+    private ReelCardProjection projectArchetypeReelCardQuad(ReelPresentationTransform presentation, ArchetypeReelSceneRenderer.PlacedCard card, ArchetypeReelState state) {
+        return SurfaceProjectionService.projectArchetypeReelCardProjection(
+                presentation,
+                card,
+                state.focusedTiltYaw(),
+                state.focusedTiltPitch()
         );
     }
 
-    private ScreenPoint projectArchetypeReelPoint(
-            ReelPresentationTransform presentation,
-            ArchetypeReelSceneRenderer.PlacedCard card,
-            float localX,
-            float localY,
-            float localZ
-    ) {
-        float scale = presentation.scale() * card.scale();
-        Vector3f point = new Vector3f(localX * scale, localY * scale, localZ * scale);
-        point.rotateY((float) Math.toRadians(card.yawDegrees()));
-        point.add(card.centerX() * presentation.scale(), card.centerY() * presentation.scale(), card.centerZ() * presentation.scale());
-        float perspective = perspectiveScale(presentation.centerZ() + point.z);
-        return new ScreenPoint(
-                presentation.centerX() + (point.x * perspective),
-                presentation.centerY() + (point.y * perspective)
-        );
+    private ReelFrameSnapshot reelFrameSnapshot(BookLayout layout, ArchetypeReelState state) {
+        if (layout == null || state == null || !state.active()) {
+            return null;
+        }
+        ArchetypeReelSceneRenderer.ReelLayout reelLayout = archetypeReelRenderer.layout(state);
+        ReelPresentationTransform presentation = reelPresentationTransform(layout);
+        java.util.List<ReelCardProjection> projections = new java.util.ArrayList<>(reelLayout.cards().size());
+        ReelCardProjection focused = null;
+        for (ArchetypeReelSceneRenderer.PlacedCard card : reelLayout.cards()) {
+            ReelCardProjection projection = projectArchetypeReelCardQuad(presentation, card, state);
+            projections.add(projection);
+            if (card.focused()) {
+                focused = projection;
+            }
+        }
+        return new ReelFrameSnapshot(presentation, reelLayout, java.util.List.copyOf(projections), focused);
     }
 
     private PageLocalPoint resolvePointInTriangle(
@@ -704,16 +848,6 @@ public final class BookSceneRenderer {
         return new PageLocalPoint(bounds, localX, localY);
     }
 
-    private boolean containsPoint(ScreenQuad quad, float x, float y) {
-        ScreenPoint point = new ScreenPoint(x, y);
-        Barycentric firstTriangle = barycentric(point, quad.topLeft(), quad.topRight(), quad.bottomRight());
-        if (firstTriangle != null && firstTriangle.isInside()) {
-            return true;
-        }
-        Barycentric secondTriangle = barycentric(point, quad.topLeft(), quad.bottomRight(), quad.bottomLeft());
-        return secondTriangle != null && secondTriangle.isInside();
-    }
-
     private static Barycentric barycentric(ScreenPoint p, ScreenPoint a, ScreenPoint b, ScreenPoint c) {
         float denominator = ((b.y() - c.y()) * (a.x() - c.x())) + ((c.x() - b.x()) * (a.y() - c.y()));
         if (Math.abs(denominator) < 0.0001f) {
@@ -725,7 +859,7 @@ public final class BookSceneRenderer {
         return new Barycentric(alpha, beta, gamma);
     }
 
-    private static float perspectiveScale(float z) {
+    static float perspectiveScale(float z) {
         return PAGE_PICK_CAMERA_DEPTH / Math.max(1.0f, PAGE_PICK_CAMERA_DEPTH - z);
     }
 
@@ -779,11 +913,20 @@ public final class BookSceneRenderer {
             float inspectPitch
     ) {}
 
-    private record ReelPresentationTransform(
+    record ReelPresentationTransform(
             float centerX,
             float centerY,
             float centerZ,
             float scale
+    ) {}
+
+    public record ReelCardProjection(int index, ScreenQuad quad, float depthZ, boolean focused) {}
+
+    private record ReelFrameSnapshot(
+            ReelPresentationTransform presentation,
+            ArchetypeReelSceneRenderer.ReelLayout layout,
+            java.util.List<ReelCardProjection> projections,
+            ReelCardProjection focusedProjection
     ) {}
 
     private record PageSurfaceMapping(

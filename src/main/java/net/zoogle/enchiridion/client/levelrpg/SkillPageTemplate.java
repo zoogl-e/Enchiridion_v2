@@ -15,10 +15,12 @@ final class SkillPageTemplate {
                 pageContent.text(JournalPageSlot.INTERACTION, "View Skill"),
                 Component.literal("Open " + skill.name()),
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
-                        && LevelRpgJournalInteractionBridge.openSkillProjection(bookContext, skill.name())
+                        && LevelRpgJournalInteractionBridge.openSkillScreen(bookContext, skill.name())
         );
         page.addTitle(pageContent.text(JournalPageSlot.TITLE, skill.name()));
-        page.addFocal(pageContent.text(JournalPageSlot.FOCAL, String.valueOf(skill.investedSkillLevel())));
+        // Invested level is live progression data — never read from JournalContentStore or template
+        // overrides freeze stale "0" when the player gains levels.
+        page.addFocal(String.valueOf(skill.investedSkillLevel()));
         page.addBody(pageContent.text(JournalPageSlot.BODY, compactSkillDescription(skill.roleSummary())));
         return page.build();
     }

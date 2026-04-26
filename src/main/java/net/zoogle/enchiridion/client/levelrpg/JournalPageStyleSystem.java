@@ -166,6 +166,28 @@ public final class JournalPageStyleSystem {
             addCenteredStats(JournalPageSlot.STATS, rows, gap);
         }
 
+        void addRadarChart(
+                JournalPageSlot slot,
+                java.util.List<Float> values,
+                java.util.List<Float> masteryLevelValues,
+                java.util.List<Float> nextMasteryRingValues,
+                java.util.List<String> labels) {
+            SlotDefinition definition = registerSlot(slot);
+            SlotRegion region = definition.region();
+            BookPageElement.RadarChartElement element = new BookPageElement.RadarChartElement(
+                    region.x(), region.y(), region.width(), region.height(),
+                    values, masteryLevelValues, nextMasteryRingValues, labels,
+                    0x40A08060,
+                    0xCC5A3F29,
+                    0x705A3F29,
+                    0x305A3F29,
+                    0x3AA0C4D0,
+                    0xD8C4883A
+            );
+            elements.add(element);
+            trackMeasuredBounds(slot, region, JournalTextRole.BODY, false, element, 1.0f);
+        }
+
         void addFooter(String text) {
             addCenteredText(JournalPageSlot.FOOTER, JournalTextRole.FOOTER, text);
         }
@@ -631,13 +653,13 @@ public final class JournalPageStyleSystem {
                         new JournalTemplateStore.NormalizedSlotRegion(0.0, 10.0 / 145.0, 1.0, 12.0 / 145.0),
                         new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.85f, 1.0f)
                 ),
-                JournalPageSlot.FOCAL, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.0, 48.0 / 145.0, 1.0, 30.0 / 145.0),
-                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.8f, 1.0f)
+                JournalPageSlot.BODY, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.07, 26.0 / 145.0, 0.86, 22.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 2, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
                 ),
-                JournalPageSlot.STATS, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.053, 114.0 / 145.0, 0.894, 28.0 / 145.0),
-                        new SlotFit(Alignment.LEFT, 4, false, OverflowPolicy.CLAMP, 1.0f, 1.0f)
+                JournalPageSlot.RADAR, new DefaultSlotSpec(
+                        new JournalTemplateStore.NormalizedSlotRegion(0.03, 60.0 / 145.0, 0.94, 58.0 / 145.0),
+                        new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.INVALID, 1.0f, 1.0f)
                 ),
                 JournalPageSlot.INTERACTION, new DefaultSlotSpec(
                         new JournalTemplateStore.NormalizedSlotRegion(0.0, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 8) / 145.0, 1.0, 8.0 / 145.0),
@@ -697,7 +719,7 @@ public final class JournalPageStyleSystem {
     private static Set<JournalPageSlot> requiredSlotsFor(JournalPagePurpose purpose) {
         return switch (purpose) {
             case CHARACTER_IDENTITY -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.SUBTITLE);
-            case CHARACTER_STANDING -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.STATS, JournalPageSlot.INTERACTION);
+            case CHARACTER_STANDING -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.BODY, JournalPageSlot.RADAR, JournalPageSlot.INTERACTION);
             case LEDGER -> EnumSet.of(JournalPageSlot.ROWS);
             case SKILL_DETAIL -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.FOCAL, JournalPageSlot.BODY, JournalPageSlot.INTERACTION);
             case FRONT_MATTER -> EnumSet.of(JournalPageSlot.TITLE, JournalPageSlot.BODY);

@@ -9,13 +9,12 @@ import java.util.Objects;
 public final class LevelRpgJournalSnapshotFactory {
     static final Map<String, String> CANONICAL_SKILL_PATHS = Map.of(
             "Valor", "valor",
-            "Vitality", "vitality",
-            "Mining", "mining",
-            "Culinary", "culinary",
+            "Finesse", "finesse",
+            "Arcana", "arcana",
+            "Delving", "delving",
             "Forging", "forging",
             "Artificing", "artificing",
-            "Magick", "magick",
-            "Exploration", "exploration"
+            "Hearth", "hearth"
     );
     private LevelRpgJournalSnapshotFactory() {}
 

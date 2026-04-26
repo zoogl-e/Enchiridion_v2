@@ -7,6 +7,8 @@ import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookPageProvider;
 import net.zoogle.enchiridion.api.EnchiridionClientApi;
+import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalBookRegistration;
+import net.zoogle.enchiridion.client.levelrpg.LevelRpgProfileSyncHook;
 import net.zoogle.enchiridion.client.registry.BookRegistry;
 import net.zoogle.enchiridion.client.ui.BookScreen;
 
@@ -51,6 +53,10 @@ public final class EnchiridionClient implements EnchiridionClientApi {
         BookDefinition definition = BookRegistry.get(id);
         if (definition == null) {
             return;
+        }
+
+        if (id.equals(LevelRpgJournalBookRegistration.LEVEL_RPG_JOURNAL_BOOK_ID)) {
+            LevelRpgProfileSyncHook.requestServerSnapshotIfAvailable();
         }
 
         BookContext context = BookContext.of(minecraft, minecraft.player, id);

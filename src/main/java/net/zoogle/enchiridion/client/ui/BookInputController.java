@@ -7,19 +7,26 @@ import org.lwjgl.glfw.GLFW;
 import java.util.function.Supplier;
 
 final class BookInputController {
-    boolean keyPressed(BookScreenController controller, BookViewState state, int keyCode, Supplier<Boolean> superKeyPressed, Runnable closeNow) {
-        if (controller.isClosing()) {
-            return true;
-        }
+    boolean keyPressed(
+            BookScreenController controller,
+            BookModeCoordinator modeCoordinator,
+            BookViewState state,
+            int keyCode,
+            Supplier<Boolean> superKeyPressed,
+            Runnable closeNow
+    ) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            if (controller.isClosed() || controller.isArriving()) {
+            if (controller.isClosing() || controller.isClosed() || controller.isArriving()) {
                 closeNow.run();
             } else {
                 controller.beginUserClosing();
             }
             return true;
         }
-        if (controller.isProjectionVisible()) {
+        if (controller.isClosing()) {
+            return true;
+        }
+        if (modeCoordinator.canHandleProjectionInput(controller)) {
             if (keyCode == GLFW.GLFW_KEY_RIGHT || keyCode == GLFW.GLFW_KEY_D) {
                 return controller.nextProjectionFocus();
             }
@@ -33,13 +40,13 @@ final class BookInputController {
             return superKeyPressed.get();
         }
         if (keyCode == GLFW.GLFW_KEY_RIGHT || keyCode == GLFW.GLFW_KEY_D) {
-            if (controller.isJournalReadable()) {
+            if (modeCoordinator.canHandleJournalInput(controller)) {
                 controller.nextSpread();
             }
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_LEFT || keyCode == GLFW.GLFW_KEY_A) {
-            if (controller.isJournalReadable()) {
+            if (modeCoordinator.canHandleJournalInput(controller)) {
                 controller.previousSpread();
             }
             return true;
@@ -47,7 +54,16 @@ final class BookInputController {
         return superKeyPressed.get();
     }
 
-    boolean mouseClicked(BookScreenController controller, BookViewState state, BookLayout layout, BookSceneRenderer sceneRenderer, double mouseX, double mouseY, int button) {
+    boolean mouseClicked(
+            BookScreenController controller,
+            BookModeCoordinator modeCoordinator,
+            BookViewState state,
+            BookLayout layout,
+            BookSceneRenderer sceneRenderer,
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
         boolean hoveringClosedBook = layout != null && sceneRenderer.isClosedBookHovered(layout, (int) mouseX, (int) mouseY);
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && controller.isClosed() && hoveringClosedBook) {
             state.resetInspectRotation();
@@ -60,14 +76,14 @@ final class BookInputController {
             state.beginInspect(mouseX, mouseY);
             return true;
         }
-        if (controller.isProjectionInteractive()) {
+        if (modeCoordinator.canHandleProjectionInput(controller) && controller.isProjectionInteractive()) {
             ProjectionButtonHit projectionButton = state.hoveredProjectionButton();
             if (projectionButton != null && projectionButton.view().hasPrimaryAction()) {
                 return projectionButton.view().primaryAction().onClick(controller.context(), state.displayedSpreadIndex(), button);
             }
             return false;
         }
-        if (controller.isJournalReadable()) {
+        if (modeCoordinator.canHandleJournalInput(controller)) {
             PageInteractiveNode hoveredTarget = state.hoveredInteractiveTarget();
             if (hoveredTarget != null && hoveredTarget.enabled() && hoveredTarget.action().onClick(controller.context(), state.displayedSpreadIndex(), button)) {
                 return true;

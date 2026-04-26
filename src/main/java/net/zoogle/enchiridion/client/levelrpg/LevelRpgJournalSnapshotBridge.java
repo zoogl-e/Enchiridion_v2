@@ -1,13 +1,17 @@
 package net.zoogle.enchiridion.client.levelrpg;
 
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.resources.ResourceLocation;
 import net.zoogle.enchiridion.api.BookContext;
+import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
 final class LevelRpgJournalSnapshotBridge {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final String CLIENT_FACTORY_CLASS = "net.zoogle.levelrpg.client.journal.ClientJournalSnapshotFactory";
 
     private LevelRpgJournalSnapshotBridge() {}
@@ -24,7 +28,8 @@ final class LevelRpgJournalSnapshotBridge {
                 return fallback;
             }
             return adaptSnapshot(context.player(), snapshot, fallback);
-        } catch (ReflectiveOperationException exception) {
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            LOGGER.error("LevelRPG journal bridge failed; book will use placeholder data. Install matching LevelRPG or check logs.", exception);
             return fallback;
         }
     }
@@ -72,10 +77,16 @@ final class LevelRpgJournalSnapshotBridge {
         List<JournalCharacterStat> stats = new ArrayList<>();
         for (Object row : rows) {
             String name = stringValue(call(row, "label"));
-            int level = intValue(call(row, "level"));
+            int investedLevel = intValue(call(row, "level"));
+            int masteryLevel = intValue(call(row, "masteryLevel"));
+            int statValue = investedLevel + masteryLevel;
+            float masteryLevelNorm = JournalLayoutMetrics.radarLevelDisplayNorm(masteryLevel);
+            float nextRing = JournalLayoutMetrics.radarLevelDisplayNorm(masteryLevel + 1);
             stats.add(new JournalCharacterStat(
                     name,
-                    level,
+                    statValue,
+                    masteryLevelNorm,
+                    nextRing,
                     false,
                     formatPassiveEffectsCompact(call(row, "passiveEffects"))
             ));
@@ -119,10 +130,7 @@ final class LevelRpgJournalSnapshotBridge {
         if (skill == null) {
             return null;
         }
-        String skillKey = firstNonBlank(
-                stringValue(call(skill, "path")),
-                stringValue(call(skill, "id"))
-        );
+        String skillKey = journalSkillKeyFromSnapshot(skill);
         String displayName = stringValue(call(skill, "displayName"));
         String roleSummary = stringValue(call(skill, "summary"));
         int investedSkillLevel = firstNonZero(
@@ -203,7 +211,7 @@ final class LevelRpgJournalSnapshotBridge {
 
         List<?> nodes = asList(call(mastery, "nodes"));
         long unlockedCount = nodes.stream()
-                .filter(node -> "UNLOCKED".equals(stringValue(callUnchecked(node, "status"))))
+                .filter(node -> "UNLOCKED".equals(enumOrStringName(callUnchecked(node, "status"))))
                 .count();
         if (unlockedCount > 0) {
             builder.append("\nChosen nodes: ").append(unlockedCount);
@@ -256,7 +264,7 @@ final class LevelRpgJournalSnapshotBridge {
         }
 
         for (Object node : asList(call(mastery, "nodes"))) {
-            String status = stringValue(call(node, "status"));
+            String status = enumOrStringName(call(node, "status"));
             if (!"AVAILABLE".equals(status) && !"LOCKED_LEVEL".equals(status)) {
                 continue;
             }
@@ -351,6 +359,33 @@ final class LevelRpgJournalSnapshotBridge {
             }
         }
         return builder.toString();
+    }
+
+    /**
+     * JournalSkillSnapshot uses {@code skillId()} ({@link ResourceLocation}). Older snapshots used {@code path}/{@code id}.
+     */
+    private static String journalSkillKeyFromSnapshot(Object skill) throws ReflectiveOperationException {
+        Object id = callUnchecked(skill, "skillId");
+        if (id instanceof ResourceLocation rl) {
+            return rl.getPath();
+        }
+        if (id != null) {
+            String s = id.toString();
+            int colon = s.indexOf(':');
+            return colon >= 0 ? s.substring(colon + 1) : s;
+        }
+        try {
+            return firstNonBlank(stringValue(call(skill, "path")), stringValue(call(skill, "id")));
+        } catch (ReflectiveOperationException ignored) {
+            return "";
+        }
+    }
+
+    private static String enumOrStringName(Object value) {
+        if (value instanceof Enum<?> e) {
+            return e.name();
+        }
+        return stringValue(value);
     }
 
     private static Object call(Object target, String methodName) throws ReflectiveOperationException {

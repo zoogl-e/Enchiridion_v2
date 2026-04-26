@@ -8,8 +8,8 @@ public final class BookAnimationSpec {
     private static final float OPEN_DURATION_SECONDS = 1.35f;
     private static final float CLOSE_DURATION_SECONDS = 1.5f;
     private static final float FLIP_DURATION_SECONDS = 0.56f;
-    private static final float FRONT_FLIP_DURATION_SECONDS = 1.5f;
-    private static final float BACK_FLIP_DURATION_SECONDS = 1.5f;
+    private static final float FRONT_FLIP_DURATION_SECONDS = 0.85f;
+    private static final float BACK_FLIP_DURATION_SECONDS = 0.85f;
     private static final float RIFFLE_DURATION_SECONDS = 0.76f;
     private static final float IDLE_LOOP_DURATION_SECONDS = 4.0f;
     private static final float FLIP_PAGE_SWAP_PROGRESS = 0.5f;

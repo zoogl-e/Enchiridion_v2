@@ -15,10 +15,14 @@ public final class ArchetypeReelState {
     private static final int CONFIRMING_TICKS = 8;
     private static final int BURNING_TICKS = 18;
     private static final int RETURN_TICKS = 12;
+    private static final int ENTRANCE_TICKS = 10;
+    /** Min ticks between keyboard reel steps (reduces GLFW key-repeat skipping multiple cards). */
+    private static final int KEYBOARD_NAV_COOLDOWN_TICKS = 4;
 
     private boolean active;
     private List<JournalArchetypeChoice> entries = List.of();
     private int focusedIndex;
+    private int settledFocusedIndex;
     private int previousFocusedIndex;
     private int hoveredIndex = -1;
     private float animatedFocusPosition;
@@ -31,6 +35,8 @@ public final class ArchetypeReelState {
     private Phase phase = Phase.IDLE;
     private ResourceLocation boundArchetypeId;
     private ResourceLocation selectedArchetypeId;
+    private int entranceTick;
+    private int keyboardNavigateCooldownTicks;
 
     public enum Phase {
         IDLE,
@@ -49,6 +55,7 @@ public final class ArchetypeReelState {
         this.boundArchetypeId = boundArchetypeId;
         this.selectedArchetypeId = selectedArchetypeId;
         this.focusedIndex = preferredIndex(boundArchetypeId, selectedArchetypeId);
+        this.settledFocusedIndex = this.focusedIndex;
         this.previousFocusedIndex = this.focusedIndex;
         this.animatedFocusPosition = this.focusedIndex;
         this.hoveredIndex = this.focusedIndex;
@@ -59,6 +66,8 @@ public final class ArchetypeReelState {
         this.phaseTick = 0;
         this.bindRequestIssued = false;
         this.phase = Phase.IDLE;
+        this.entranceTick = 0;
+        this.keyboardNavigateCooldownTicks = 0;
         return true;
     }
 
@@ -70,11 +79,21 @@ public final class ArchetypeReelState {
         bindRequestIssued = false;
         focusedTiltYaw = 0.0f;
         focusedTiltPitch = 0.0f;
+        entranceTick = 0;
+        keyboardNavigateCooldownTicks = 0;
     }
 
     public void tick(@Nullable ResourceLocation syncedBoundArchetypeId) {
         if (!active || entries.isEmpty()) {
             return;
+        }
+
+        if (keyboardNavigateCooldownTicks > 0) {
+            keyboardNavigateCooldownTicks--;
+        }
+
+        if (entranceTick < ENTRANCE_TICKS) {
+            entranceTick++;
         }
 
         updateMovement();
@@ -137,6 +156,10 @@ public final class ArchetypeReelState {
         return focusedIndex;
     }
 
+    public int settledFocusedIndex() {
+        return settledFocusedIndex;
+    }
+
     public int previousFocusedIndex() {
         return previousFocusedIndex;
     }
@@ -147,6 +170,28 @@ public final class ArchetypeReelState {
 
     public float transitionProgress() {
         return transitionProgress;
+    }
+
+    /**
+     * Multiplier for reel card and overlay opacity (entrance ease-in, fade during burn/return).
+     */
+    public float globalPresentationAlpha() {
+        float entrance = Math.min(1.0f, entranceTick / (float) ENTRANCE_TICKS);
+        return switch (phase) {
+            case BURNING -> entrance * (1.0f - 0.78f * transitionProgress);
+            case BOUND_RETURN -> entrance * Math.max(0.0f, 0.22f * (1.0f - transitionProgress));
+            default -> entrance;
+        };
+    }
+
+    /**
+     * How much to lower the book while the reel is shown; eases in on open and out during bound return.
+     * Pass the render {@code partialTick} for smooth sub-tick interpolation; use 0 for non-render contexts.
+     */
+    public float reelBookLowerBlend(float partialTick) {
+        float entrance = Math.min(1.0f, (entranceTick + partialTick) / (float) ENTRANCE_TICKS);
+        float exit = phase == Phase.BOUND_RETURN ? (1.0f - transitionProgress) : 1.0f;
+        return entrance * exit;
     }
 
     public Phase phase() {
@@ -188,11 +233,29 @@ public final class ArchetypeReelState {
         transitionProgress = 0.0f;
     }
 
-    public void move(int direction) {
-        if (!active || entries.isEmpty() || phase == Phase.CONFIRMING || phase == Phase.BURNING || phase == Phase.BOUND_RETURN) {
+    public void abortToSelectable() {
+        if (!active) {
             return;
         }
-        setFocusIndex(Math.floorMod(focusedIndex + direction, entries.size()));
+        phase = Phase.IDLE;
+        phaseTick = 0;
+        bindRequestIssued = false;
+        transitionProgress = 1.0f;
+    }
+
+    public void move(int direction) {
+        if (!active || entries.isEmpty() || phase != Phase.IDLE) {
+            return;
+        }
+        if (keyboardNavigateCooldownTicks > 0) {
+            return;
+        }
+        int next = Math.floorMod(focusedIndex + direction, entries.size());
+        if (next == focusedIndex) {
+            return;
+        }
+        keyboardNavigateCooldownTicks = KEYBOARD_NAV_COOLDOWN_TICKS;
+        setFocusIndex(next, false);
     }
 
     public void setHoveredIndex(int hoveredIndex) {
@@ -204,17 +267,17 @@ public final class ArchetypeReelState {
     }
 
     public void focusIndex(int index) {
-        if (!active || index < 0 || index >= entries.size() || phase == Phase.CONFIRMING || phase == Phase.BURNING || phase == Phase.BOUND_RETURN) {
+        if (!active || index < 0 || index >= entries.size() || phase != Phase.IDLE) {
             return;
         }
-        setFocusIndex(index);
+        setFocusIndex(index, false);
     }
 
     public JournalArchetypeChoice focusedChoice() {
         if (!active || entries.isEmpty()) {
             return null;
         }
-        return entries.get(focusedIndex);
+        return entries.get(settledFocusedIndex);
     }
 
     public @Nullable ResourceLocation hoveredArchetypeId() {
@@ -241,17 +304,26 @@ public final class ArchetypeReelState {
         this.selectedArchetypeId = archetypeId;
     }
 
-    private void setFocusIndex(int index) {
+    private void setFocusIndex(int index, boolean snapCarousel) {
         if (index == focusedIndex) {
             return;
         }
         previousFocusedIndex = focusedIndex;
         focusedIndex = index;
         hoveredIndex = index;
-        transitionDistance = Math.max(1.0f, Math.abs(wrappedDelta(animatedFocusPosition, focusedIndex, entries.size())));
-        transitionProgress = 0.0f;
-        phase = Phase.MOVING;
-        phaseTick = 0;
+        if (snapCarousel) {
+            animatedFocusPosition = index;
+            settledFocusedIndex = index;
+            transitionDistance = 1.0f;
+            transitionProgress = 1.0f;
+            phase = Phase.IDLE;
+            phaseTick = 0;
+        } else {
+            transitionDistance = Math.max(1.0f, Math.abs(wrappedDelta(animatedFocusPosition, focusedIndex, entries.size())));
+            transitionProgress = 0.0f;
+            phase = Phase.MOVING;
+            phaseTick = 0;
+        }
     }
 
     private void updateMovement() {
@@ -261,6 +333,7 @@ public final class ArchetypeReelState {
         if (remaining < MOVE_SNAP_DISTANCE) {
             animatedFocusPosition = focusedIndex;
             if (phase == Phase.MOVING) {
+                settledFocusedIndex = focusedIndex;
                 phase = Phase.IDLE;
                 transitionProgress = 1.0f;
             }

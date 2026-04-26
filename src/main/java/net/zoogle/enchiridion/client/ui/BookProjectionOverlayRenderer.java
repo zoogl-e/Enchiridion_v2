@@ -296,13 +296,12 @@ final class BookProjectionOverlayRenderer {
     private String skillGlyphIcon(String focusId) {
         return switch (focusId == null ? "" : focusId.toLowerCase()) {
             case "valor" -> "\u2020\u2058\u2726";
-            case "vitality" -> "\u2756+\u2058";
-            case "mining" -> "\u27e1\u2058\u2303";
-            case "culinary" -> "\u2058\u2727\u2058";
+            case "finesse" -> "\u2303\u2058\u2727";
+            case "arcana" -> "\u2726\u2058\u27e3";
+            case "delving" -> "\u27e1\u2058\u2303";
             case "forging" -> "\u2021\u2058\u2303";
             case "artificing" -> "\u203b\u2058\u2299";
-            case "magick" -> "\u2726\u2058\u27e3";
-            case "exploration" -> "\u2303\u2058\u2727";
+            case "hearth" -> "\u2058\u2727\u2058";
             default -> "\u2726\u2058\u27e1";
         };
     }

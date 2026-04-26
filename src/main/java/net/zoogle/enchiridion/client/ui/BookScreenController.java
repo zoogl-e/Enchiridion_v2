@@ -10,12 +10,12 @@ import net.zoogle.enchiridion.api.BookProjectionView;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.anim.BookAnimController;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalIntroFlowState;
 import org.jetbrains.annotations.Nullable;
 
 public final class BookScreenController implements BookProjectionController.ProjectionSpreadNavigator {
     private final BookDefinition definition;
     private final BookContext context;
+    private final IntroFlowPort introFlow;
     private final BookAnimController animController = new BookAnimController();
     private final BookProjectionController projectionController;
 
@@ -24,8 +24,13 @@ public final class BookScreenController implements BookProjectionController.Proj
     private boolean resetSpreadOnNextOpen;
 
     public BookScreenController(BookDefinition definition, BookContext context) {
+        this(definition, context, NoopIntroFlowPort.INSTANCE);
+    }
+
+    public BookScreenController(BookDefinition definition, BookContext context, IntroFlowPort introFlow) {
         this.definition = definition;
         this.context = context;
+        this.introFlow = introFlow;
         int initialSpreadIndex = Math.clamp(definition.provider().initialSpreadIndex(context), 0, maxSpreadIndex());
         this.animController.setCurrentSpread(initialSpreadIndex);
         this.currentSpread = definition.provider().getSpread(context, initialSpreadIndex);
@@ -40,7 +45,7 @@ public final class BookScreenController implements BookProjectionController.Proj
             reloadSpread();
         }
         projectionController.tick();
-        if (LevelRpgJournalIntroFlowState.get().tick(context)) {
+        if (introFlow.tick(context)) {
             int initialSpreadIndex = Math.clamp(definition.provider().initialSpreadIndex(context), 0, maxSpreadIndex());
             if (animController.getCurrentSpread() != initialSpreadIndex) {
                 animController.setCurrentSpread(initialSpreadIndex);
@@ -294,7 +299,7 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     public void resetPendingIntroFlow() {
         if (hasPendingIntroFlow()) {
-            LevelRpgJournalIntroFlowState.get().reset();
+            introFlow.reset();
             projectionController.closeProjection();
             reloadSpread();
         }
@@ -304,14 +309,36 @@ public final class BookScreenController implements BookProjectionController.Proj
         if (focusId == null || focusId.isBlank()) {
             return false;
         }
-        LevelRpgJournalIntroFlowState.get().beginBinding(context, focusId);
+        introFlow.beginBinding(context, focusId);
         projectionController.closeProjection();
         reloadSpread();
         return true;
     }
 
     private boolean hasPendingIntroFlow() {
-        return LevelRpgJournalIntroFlowState.get().shouldResetOnClose(context);
+        return introFlow.shouldResetOnClose(context);
+    }
+
+    private enum NoopIntroFlowPort implements IntroFlowPort {
+        INSTANCE;
+
+        @Override
+        public boolean tick(BookContext context) {
+            return false;
+        }
+
+        @Override
+        public void beginBinding(BookContext context, String focusId) {
+        }
+
+        @Override
+        public boolean shouldResetOnClose(BookContext context) {
+            return false;
+        }
+
+        @Override
+        public void reset() {
+        }
     }
 
     private int maxSpreadIndex() {

@@ -8,6 +8,7 @@ import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.api.BookTrackedRegion;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
+import net.zoogle.enchiridion.client.render.HitTestService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,7 @@ import java.util.List;
 final class BookInteractionResolver {
     Resolution resolve(
             BookScreenController controller,
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookSpread displayedSpread,
             int displayedSpreadIndex,
@@ -28,13 +29,13 @@ final class BookInteractionResolver {
             return Resolution.empty();
         }
         List<PageInteractiveNode> targets = controller.isOpenReadable()
-                ? resolveTargets(controller, sceneRenderer, layout, displayedSpread, displayedSpreadIndex, projectionFocusOffset)
+                ? resolveTargets(controller, geometry, layout, displayedSpread, displayedSpreadIndex, projectionFocusOffset)
                 : List.of();
         PageInteractiveNode hoveredTarget = controller.isInteractionStableReadable()
-                ? resolveHoveredTarget(sceneRenderer, layout, controller, projectionFocusOffset, mouseX, mouseY, targets)
+                ? resolveHoveredTarget(geometry, layout, controller, projectionFocusOffset, mouseX, mouseY, targets)
                 : null;
         PageInteractionDebugState debugState = debugPageLocalInteraction && controller.isOpenReadable()
-                ? buildPageInteractionDebugState(controller, sceneRenderer, layout, projectionFocusOffset, mouseX, mouseY, targets)
+                ? buildPageInteractionDebugState(controller, geometry, layout, projectionFocusOffset, mouseX, mouseY, targets)
                 : null;
         return new Resolution(hoveredTarget, targets, debugState);
     }
@@ -61,7 +62,7 @@ final class BookInteractionResolver {
 
     private List<PageInteractiveNode> resolveTargets(
             BookScreenController controller,
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookSpread displayedSpread,
             int displayedSpreadIndex,
@@ -75,7 +76,7 @@ final class BookInteractionResolver {
         )) {
             resolved.add(buildNode(
                     controller,
-                    sceneRenderer,
+                    geometry,
                     layout,
                     projectionFocusOffset,
                     target
@@ -86,7 +87,7 @@ final class BookInteractionResolver {
 
     private PageInteractiveNode buildNode(
             BookScreenController controller,
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             float projectionFocusOffset,
             ResolvedBookInteractionTarget target
@@ -103,8 +104,8 @@ final class BookInteractionResolver {
                 target.action(),
                 target.enabled(),
                 target.visualType(),
-                screenRectForTarget(sceneRenderer, layout, controller, projectionFocusOffset, target),
-                screenQuadForTarget(sceneRenderer, layout, controller, projectionFocusOffset, target),
+                screenRectForTarget(geometry, layout, controller, projectionFocusOffset, target),
+                screenQuadForTarget(geometry, layout, controller, projectionFocusOffset, target),
                 target.hitTestMode(),
                 target.interactiveElement(),
                 target.region(),
@@ -113,7 +114,7 @@ final class BookInteractionResolver {
     }
 
     private PageInteractiveNode resolveHoveredTarget(
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookScreenController controller,
             float projectionFocusOffset,
@@ -125,14 +126,14 @@ final class BookInteractionResolver {
         BookSceneRenderer.PageLocalPoint rightLocalPoint = null;
         for (PageInteractiveNode target : targets) {
             if (target.hitTestMode() == PageInteractiveNode.HitTestMode.SCREEN_SPACE) {
-                if (containsScreenPoint(target.screenQuad(), mouseX, mouseY)) {
+                if (HitTestService.containsPoint(target.screenQuad(), mouseX, mouseY)) {
                     return target;
                 }
                 continue;
             }
             BookSceneRenderer.PageLocalPoint localPoint = target.pageSide() == BookPageSide.LEFT
-                    ? (leftLocalPoint != null ? leftLocalPoint : (leftLocalPoint = pageLocalPoint(sceneRenderer, layout, controller, projectionFocusOffset, BookPageSide.LEFT, mouseX, mouseY)))
-                    : (rightLocalPoint != null ? rightLocalPoint : (rightLocalPoint = pageLocalPoint(sceneRenderer, layout, controller, projectionFocusOffset, BookPageSide.RIGHT, mouseX, mouseY)));
+                    ? (leftLocalPoint != null ? leftLocalPoint : (leftLocalPoint = pageLocalPoint(geometry, layout, controller, projectionFocusOffset, BookPageSide.LEFT, mouseX, mouseY)))
+                    : (rightLocalPoint != null ? rightLocalPoint : (rightLocalPoint = pageLocalPoint(geometry, layout, controller, projectionFocusOffset, BookPageSide.RIGHT, mouseX, mouseY)));
             if (localPoint != null && target.contains(localPoint.localX(), localPoint.localY())) {
                 return target;
             }
@@ -142,7 +143,7 @@ final class BookInteractionResolver {
 
     private PageInteractionDebugState buildPageInteractionDebugState(
             BookScreenController controller,
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             float projectionFocusOffset,
             int mouseX,
@@ -150,14 +151,14 @@ final class BookInteractionResolver {
             List<PageInteractiveNode> targets
     ) {
         return new PageInteractionDebugState(
-                buildPageDebugSide(controller, sceneRenderer, layout, projectionFocusOffset, BookPageSide.LEFT, mouseX, mouseY, targets),
-                buildPageDebugSide(controller, sceneRenderer, layout, projectionFocusOffset, BookPageSide.RIGHT, mouseX, mouseY, targets)
+                buildPageDebugSide(controller, geometry, layout, projectionFocusOffset, BookPageSide.LEFT, mouseX, mouseY, targets),
+                buildPageDebugSide(controller, geometry, layout, projectionFocusOffset, BookPageSide.RIGHT, mouseX, mouseY, targets)
         );
     }
 
     private PageDebugSide buildPageDebugSide(
             BookScreenController controller,
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             float projectionFocusOffset,
             BookPageSide pageSide,
@@ -165,7 +166,7 @@ final class BookInteractionResolver {
             int mouseY,
             List<PageInteractiveNode> targets
     ) {
-        BookSceneRenderer.PageSurfaceBounds bounds = sceneRenderer.pageSurfaceBounds(
+        BookSceneRenderer.PageSurfaceBounds bounds = geometry.pageSurfaceBounds(
                 layout,
                 controller.visualState(),
                 controller.animationProgress(),
@@ -173,7 +174,7 @@ final class BookInteractionResolver {
                 projectionFocusOffset,
                 pageSide
         );
-        BookSceneRenderer.PageLocalPoint localPoint = pageLocalPoint(sceneRenderer, layout, controller, projectionFocusOffset, pageSide, mouseX, mouseY);
+        BookSceneRenderer.PageLocalPoint localPoint = pageLocalPoint(geometry, layout, controller, projectionFocusOffset, pageSide, mouseX, mouseY);
         PageInteractiveNode containing = null;
         if (localPoint != null) {
             for (PageInteractiveNode target : targets) {
@@ -185,7 +186,7 @@ final class BookInteractionResolver {
         }
         BookSceneRenderer.ScreenPoint mouseProjection = localPoint == null
                 ? null
-                : sceneRenderer.projectPagePoint(
+                : geometry.projectPagePoint(
                         layout,
                         controller.visualState(),
                         controller.animationProgress(),
@@ -199,7 +200,7 @@ final class BookInteractionResolver {
     }
 
     private BookSceneRenderer.PageLocalPoint pageLocalPoint(
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookScreenController controller,
             float projectionFocusOffset,
@@ -207,7 +208,7 @@ final class BookInteractionResolver {
             int mouseX,
             int mouseY
     ) {
-        return sceneRenderer.pageLocalPoint(
+        return geometry.pageLocalPoint(
                 layout,
                 controller.visualState(),
                 controller.animationProgress(),
@@ -239,14 +240,14 @@ final class BookInteractionResolver {
     }
 
     private BookSceneRenderer.ScreenRect screenRectForTarget(
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookScreenController controller,
             float projectionFocusOffset,
             ResolvedBookInteractionTarget target
     ) {
         if (target.trackedRegion() != null) {
-            return sceneRenderer.projectTrackedRegionRect(
+            return geometry.projectTrackedRegionRect(
                     layout,
                     controller.visualState(),
                     controller.animationProgress(),
@@ -255,7 +256,7 @@ final class BookInteractionResolver {
                     target.trackedRegion().anchor()
             );
         }
-        return sceneRenderer.projectPageRect(
+        return geometry.projectPageRect(
                 layout,
                 controller.visualState(),
                 controller.animationProgress(),
@@ -270,14 +271,14 @@ final class BookInteractionResolver {
     }
 
     private BookSceneRenderer.ScreenQuad screenQuadForTarget(
-            BookSceneRenderer sceneRenderer,
+            BookInteractionGeometry geometry,
             BookLayout layout,
             BookScreenController controller,
             float projectionFocusOffset,
             ResolvedBookInteractionTarget target
     ) {
         if (target.trackedRegion() != null) {
-            return sceneRenderer.projectTrackedRegionQuad(
+            return geometry.projectTrackedRegionQuad(
                     layout,
                     controller.visualState(),
                     controller.animationProgress(),
@@ -286,7 +287,7 @@ final class BookInteractionResolver {
                     target.trackedRegion().anchor()
             );
         }
-        return sceneRenderer.projectPageQuad(
+        return geometry.projectPageQuad(
                 layout,
                 controller.visualState(),
                 controller.animationProgress(),
@@ -298,32 +299,6 @@ final class BookInteractionResolver {
                 target.localWidth(),
                 target.localHeight()
         );
-    }
-
-    private boolean containsScreenPoint(BookSceneRenderer.ScreenQuad quad, float x, float y) {
-        if (quad == null) {
-            return false;
-        }
-        BookSceneRenderer.ScreenPoint point = new BookSceneRenderer.ScreenPoint(x, y);
-        return pointInsideTriangle(point, quad.topLeft(), quad.topRight(), quad.bottomRight())
-                || pointInsideTriangle(point, quad.topLeft(), quad.bottomRight(), quad.bottomLeft());
-    }
-
-    private boolean pointInsideTriangle(
-            BookSceneRenderer.ScreenPoint point,
-            BookSceneRenderer.ScreenPoint a,
-            BookSceneRenderer.ScreenPoint b,
-            BookSceneRenderer.ScreenPoint c
-    ) {
-        float denominator = ((b.y() - c.y()) * (a.x() - c.x())) + ((c.x() - b.x()) * (a.y() - c.y()));
-        if (Math.abs(denominator) < 0.0001f) {
-            return false;
-        }
-        float alpha = (((b.y() - c.y()) * (point.x() - c.x())) + ((c.x() - b.x()) * (point.y() - c.y()))) / denominator;
-        float beta = (((c.y() - a.y()) * (point.x() - c.x())) + ((a.x() - c.x()) * (point.y() - c.y()))) / denominator;
-        float gamma = 1.0f - alpha - beta;
-        float epsilon = 0.001f;
-        return alpha >= -epsilon && beta >= -epsilon && gamma >= -epsilon;
     }
 
     private void addResolvedInteractiveElements(

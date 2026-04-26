@@ -23,10 +23,9 @@ final class LevelRpgJournalDocumentBuilder {
         LevelRpgJournalSnapshot snapshot = LevelRpgJournalSnapshotFactory.create(context);
         List<LevelRpgJournalResolvedPage> pages = new ArrayList<>();
 
-        List<LevelRpgJournalResolvedPage> frontCoverPages = frontCoverPages(context);
         List<NamedSectionLayout> skillSections = new ArrayList<>();
 
-        int characterPageStart = frontCoverPages.size();
+        int characterPageStart = 0;
         int firstLedgerPageIndex = characterPageStart + 2;
         List<BookPage> rawIdentityPages = LevelRpgJournalComposer.buildIdentityPages(context, snapshot.characterSheet(), firstLedgerPageIndex);
         List<LevelRpgJournalResolvedPage> identityPages = List.of(
@@ -60,29 +59,28 @@ final class LevelRpgJournalDocumentBuilder {
                 ledgerPageIds
         );
 
-        pages.addAll(frontCoverPages);
         pages.addAll(identityPages);
         pages.addAll(ledgerPages);
         for (NamedSectionLayout skillSection : skillSections) {
             pages.addAll(skillSection.pages());
         }
-        pages.addAll(backCoverPages());
-
-        List<String> projectionFocusOrder = snapshot.skills().stream().map(JournalSkillEntry::name).toList();
-        Map<String, Integer> projectionSpreadByFocus = new LinkedHashMap<>();
-        Map<String, Integer> projectionPageByFocus = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : skillStartPages.entrySet()) {
-            projectionSpreadByFocus.put(entry.getKey(), entry.getValue() / 2);
-            projectionPageByFocus.put(entry.getKey(), entry.getValue());
+        // Ensure the back cover pages start on an even page index so they always
+        // form their own spread rather than splitting across two spreads.
+        if (pages.size() % 2 != 0) {
+            pages.add(LevelRpgJournalResolvedPage.of(
+                    JournalPageIds.syntheticEmpty(pages.size()),
+                    JournalPagePurpose.SYNTHETIC_EMPTY,
+                    BookPage.empty()
+            ));
         }
+        pages.addAll(boundBackCoverPages());
 
-        return pairPagesIntoSpreads(pages, projectionFocusOrder, projectionSpreadByFocus, projectionPageByFocus);
+        return pairPagesIntoSpreads(pages, List.of(), Map.of(), Map.of());
     }
 
     private static LevelRpgJournalDocument buildUnboundDocument(BookContext context) {
         List<BookPage> rawPages = new ArrayList<>(LevelRpgJournalComposer.buildUnboundPages(context));
         List<LevelRpgJournalResolvedPage> pages = new ArrayList<>();
-        pages.addAll(frontCoverPages(context));
         pages.addAll(List.of(
                 LevelRpgJournalResolvedPage.of(
                         JournalPageIds.unboundInitiation(),
@@ -95,7 +93,7 @@ final class LevelRpgJournalDocumentBuilder {
                         rawPages.get(1)
                 )
         ));
-        pages.addAll(backCoverPages());
+        pages.addAll(unboundBackCoverPages());
 
         List<JournalArchetypeChoice> choices = LevelRpgArchetypeBindingBridge.availableArchetypes();
         List<String> projectionFocusOrder = choices.stream().map(JournalArchetypeChoice::focusId).toList();
@@ -159,15 +157,14 @@ final class LevelRpgJournalDocumentBuilder {
         );
     }
 
-    private static List<LevelRpgJournalResolvedPage> frontCoverPages(BookContext context) {
-        List<BookPage> pages = LevelRpgJournalComposer.buildOpeningPages(context);
+    private static List<LevelRpgJournalResolvedPage> boundBackCoverPages() {
         return List.of(
-                LevelRpgJournalResolvedPage.of(JournalPageIds.openingLeft(), JournalPagePurpose.FRONT_MATTER, pages.get(0)),
-                LevelRpgJournalResolvedPage.of(JournalPageIds.openingRight(), JournalPagePurpose.FRONT_MATTER, pages.get(1))
+                LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverLeft(), JournalPagePurpose.FRONT_MATTER, LevelRpgJournalComposer.buildBoundBackCoverPage()),
+                LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverRight(), JournalPagePurpose.FRONT_MATTER, BookPage.empty())
         );
     }
 
-    private static List<LevelRpgJournalResolvedPage> backCoverPages() {
+    private static List<LevelRpgJournalResolvedPage> unboundBackCoverPages() {
         return List.of(
                 LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverLeft(), JournalPagePurpose.FRONT_MATTER, BookPage.empty()),
                 LevelRpgJournalResolvedPage.of(JournalPageIds.backCoverRight(), JournalPagePurpose.FRONT_MATTER, BookPage.empty())

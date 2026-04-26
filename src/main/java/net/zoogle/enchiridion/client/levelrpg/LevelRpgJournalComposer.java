@@ -1,17 +1,12 @@
 package net.zoogle.enchiridion.client.levelrpg;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookPage;
-import net.zoogle.enchiridion.api.BookPageElement;
-import net.zoogle.enchiridion.api.BookTextBlock;
-import net.zoogle.enchiridion.client.render.PageCanvasRenderer;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,7 +14,6 @@ final class LevelRpgJournalComposer {
     static final String READY_MARK = "Skill Point Ready";
     static final int UNBOUND_INITIATION_SPREAD_INDEX = 0;
     static final int UNBOUND_INITIAL_SPREAD_INDEX = 0;
-    private static final int STANDING_BLOCK_LINE_GAP = 5;
 
     private LevelRpgJournalComposer() {}
 
@@ -71,12 +65,16 @@ final class LevelRpgJournalComposer {
             int rowStart = pageIndex * rowsPerPage;
             int rowEnd = Math.min(stats.size(), rowStart + rowsPerPage);
             List<JournalCharacterStat> defaultRows = stats.subList(rowStart, rowEnd);
+            // Ledger row values must follow the live snapshot; JournalContentStore ROWS overrides
+            // persist old "Skill|0" lines and ignore /levelrpg sync.
             page.addLedgerRows(
                     JournalPageSlot.ROWS,
-                    ledgerRowsForPage(pageContent.text(JournalPageSlot.ROWS, defaultLedgerRows(defaultRows)), defaultRows),
+                    ledgerRowsForPage("", defaultRows),
                     skillStartPages
             );
-            page.addFooter(pageContent.text(JournalPageSlot.FOOTER, "Folio " + (pageIndex + 1) + " of " + pageCount));
+            if (pageCount > 1) {
+                page.addFooter(pageContent.text(JournalPageSlot.FOOTER, "Folio " + (pageIndex + 1) + " of " + pageCount));
+            }
             pages.add(page.build());
         }
         return List.copyOf(pages);
@@ -84,6 +82,13 @@ final class LevelRpgJournalComposer {
 
     static List<BookPage> buildSkillPages(JournalSkillEntry skill, int pageIndex, JournalPageId pageId) {
         return List.of(SkillPageTemplate.build(skill, pageIndex, pageId));
+    }
+
+    static BookPage buildBoundBackCoverPage() {
+        JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.FRONT_MATTER, BookPageSide.LEFT);
+        page.addTitle("Finis");
+        page.addBody("What practice has built, this record holds.");
+        return page.build();
     }
 
     private static BookPage buildCharacterIdentityPage(JournalCharacterSheet characterSheet, int pageIndex, JournalPageId pageId) {
@@ -94,17 +99,23 @@ final class LevelRpgJournalComposer {
         page.addTitle(pageContent.text(JournalPageSlot.TITLE, "Character Record"));
         page.addFocal(pageContent.text(JournalPageSlot.FOCAL, record.name()));
         page.addSubtitle(pageContent.text(JournalPageSlot.SUBTITLE, JournalPageStyleSystem.distinctLine(identitySubtitle(record), record.archetype(), record.name())));
+        page.addBody(pageContent.text(JournalPageSlot.BODY, identityProse(record)));
         return page.build();
     }
 
     private static BookPage buildStandingPage(BookContext context, JournalCharacterSheet characterSheet, int firstLedgerPageIndex, int pageIndex, JournalPageId pageId) {
         JournalContentStore content = JournalContentStore.instance();
         JournalContentStore.PageContentView pageContent = content.page(pageId, pageIndex, JournalPagePurpose.CHARACTER_STANDING);
-        StandingRecord standing = standingRecord(context, characterSheet);
+        StandingRecord standing = standingRecord(characterSheet);
         JournalPageStyleSystem.StyledPageBuilder page = JournalPageStyleSystem.builder(JournalPagePurpose.CHARACTER_STANDING, BookPageSide.RIGHT);
         page.addTitle(pageContent.text(JournalPageSlot.TITLE, "Standing"));
-        page.addFocal(pageContent.text(JournalPageSlot.FOCAL, "Level " + standing.level()));
-        page.addStats(contentLines(pageContent.text(JournalPageSlot.STATS, String.join("\n", standingLines(standing)))), STANDING_BLOCK_LINE_GAP);
+        page.addBody(pageContent.text(JournalPageSlot.BODY, standingProse(standing)));
+        page.addRadarChart(
+                JournalPageSlot.RADAR,
+                radarValues(characterSheet.stats()),
+                radarMasteryLevelValues(characterSheet.stats()),
+                radarNextMasteryRingValues(characterSheet.stats()),
+                radarLabels(characterSheet.stats()));
         page.addInteraction(
                 "standing:view-disciplines",
                 pageContent.text(JournalPageSlot.INTERACTION, "View Disciplines"),
@@ -113,6 +124,24 @@ final class LevelRpgJournalComposer {
                         && LevelRpgJournalInteractionBridge.jumpToJournalPage(bookContext, firstLedgerPageIndex)
         );
         return page.build();
+    }
+
+    private static java.util.List<Float> radarValues(java.util.List<JournalCharacterStat> stats) {
+        return stats.stream()
+                .map(stat -> JournalLayoutMetrics.radarMainVertexRadius(stat.value()))
+                .toList();
+    }
+
+    private static java.util.List<Float> radarMasteryLevelValues(java.util.List<JournalCharacterStat> stats) {
+        return stats.stream().map(JournalCharacterStat::masteryLevelNorm).toList();
+    }
+
+    private static java.util.List<Float> radarNextMasteryRingValues(java.util.List<JournalCharacterStat> stats) {
+        return stats.stream().map(JournalCharacterStat::masteryNextLevelRingNorm).toList();
+    }
+
+    private static java.util.List<String> radarLabels(java.util.List<JournalCharacterStat> stats) {
+        return stats.stream().map(JournalCharacterStat::name).toList();
     }
 
     private static IdentityRecord parseIdentityRecord(String identitySummary) {
@@ -131,70 +160,35 @@ final class LevelRpgJournalComposer {
         return subtitle;
     }
 
-    private static String identityProse(IdentityRecord record, JournalCharacterSheet characterSheet) {
-        String summary = firstNonBlank(record.summary(), characterSheet.allocationStatus());
-        String subtitle = identitySubtitle(record);
-        String prose = summary.trim();
-        if (!subtitle.isBlank()) {
-            String lowerSubtitle = subtitle.toLowerCase();
-            String lowerProse = prose.toLowerCase();
-            if (lowerProse.contains(lowerSubtitle)) {
-                prose = characterSheet.allocationStatus();
-            }
+    private static String identityProse(IdentityRecord record) {
+        boolean bound = !record.archetype().isBlank() && !record.archetype().contains("Unchosen");
+        if (bound) {
+            return "Practice tempers mastery; chosen disciplines are the shape it takes.";
         }
-        prose = prose
-                .replace("Skill Levels are chosen by spending the points that mastery grants.", "Mastery earned through practice is later shaped into chosen disciplines.")
-                .replace("Skill Levels are chosen with the points that mastery grants.", "Mastery earned through practice is later shaped into chosen disciplines.")
-                .replace("Your archetype is not yet sealed.", "Their archetype has not yet been sealed.")
-                .replace("Mastery is earned through practice;", "Practice tempers mastery, and")
-                .replace("Mastery is earned through practice.", "Practice tempers mastery.")
-                .replace("skill points", "unspent potential")
-                .trim();
-        return JournalPageStyleSystem.polishedSentence(prose);
+        return "An archetype is not yet sealed. Practice will reveal the shape of what you may become.";
     }
 
-    private static StandingRecord standingRecord(BookContext context, JournalCharacterSheet characterSheet) {
-        int level = context != null && context.player() != null ? context.player().experienceLevel : 0;
-        int totalExperience = context != null && context.player() != null ? context.player().totalExperience : 0;
-        int nextThreshold = context != null && context.player() != null ? context.player().getXpNeededForNextLevel() : 0;
+    private static String standingProse(StandingRecord standing) {
+        if (standing.readyPoints() > 0) {
+            return "A point of potential is ready. Turn to the disciplines to commit it.";
+        }
+        if (standing.masteryLevels() > 0) {
+            return "Practice shapes this record. Another point waits in the disciplines ahead.";
+        }
+        return "Practice in the world will shape what you may claim here.";
+    }
 
+    private static StandingRecord standingRecord(JournalCharacterSheet characterSheet) {
         String ledgerNote = characterSheet.ledgerNote();
         int masteryLevels = extractCountBetween(ledgerNote, "Mastery:", "levels earned");
         int readyPoints = extractCountBetween(ledgerNote, "Skill Points:", "ready");
         int spentPoints = extractCountBetween(ledgerNote, "|", "spent");
-        int earnedPoints = extractTrailingCount(ledgerNote, "earned");
-
-        return new StandingRecord(level, totalExperience, nextThreshold, masteryLevels, readyPoints, spentPoints, earnedPoints);
-    }
-
-    private static List<String> standingLines(StandingRecord standing) {
-        return List.of(
-                "Total Experience  " + standing.totalExperience(),
-                "Next Threshold  " + standing.nextThreshold() + " xp",
-                "Mastery Points  " + standing.earnedPoints(),
-                "Unspent Points  " + standing.readyPoints()
-        );
-    }
-
-    private static String firstNonBlank(String primary, String fallback) {
-        String primaryTrimmed = primary == null ? "" : primary.trim();
-        return !primaryTrimmed.isEmpty() ? primaryTrimmed : fallback;
+        return new StandingRecord(masteryLevels, readyPoints, spentPoints);
     }
 
     private static String nonBlankOr(String text, String fallback) {
         String trimmed = text == null ? "" : text.trim();
         return trimmed.isEmpty() ? fallback : trimmed;
-    }
-
-    private static String firstLine(String text) {
-        String[] lines = text.split("\\R");
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (!trimmed.isEmpty()) {
-                return trimmed;
-            }
-        }
-        return "";
     }
 
     private static int extractCountBetween(String text, String startToken, String endToken) {
@@ -211,19 +205,6 @@ final class LevelRpgJournalComposer {
         return extractFirstInt(slice);
     }
 
-    private static int extractTrailingCount(String text, String endToken) {
-        if (text == null || text.isBlank()) {
-            return 0;
-        }
-        int end = text.indexOf(endToken);
-        if (end < 0) {
-            return 0;
-        }
-        String slice = text.substring(0, end);
-        int lastPipe = slice.lastIndexOf('|');
-        return extractFirstInt(lastPipe >= 0 ? slice.substring(lastPipe + 1) : slice);
-    }
-
     private static int extractFirstInt(String text) {
         if (text == null) {
             return 0;
@@ -238,13 +219,6 @@ final class LevelRpgJournalComposer {
             }
         }
         return digits.isEmpty() ? 0 : Integer.parseInt(digits.toString());
-    }
-
-    private static List<String> contentLines(String content) {
-        if (content == null || content.isBlank()) {
-            return List.of();
-        }
-        return List.of(content.split("\\R"));
     }
 
     private static String defaultLedgerRows(List<JournalCharacterStat> stats) {
@@ -272,6 +246,8 @@ final class LevelRpgJournalComposer {
             rows.add(new JournalCharacterStat(
                     name,
                     value,
+                    fallback != null ? fallback.masteryLevelNorm() : 0f,
+                    fallback != null ? fallback.masteryNextLevelRingNorm() : 0f,
                     fallback != null && fallback.canAllocate(),
                     fallback != null ? fallback.passiveSummary() : ""
             ));
@@ -280,5 +256,5 @@ final class LevelRpgJournalComposer {
     }
 
     private record IdentityRecord(String name, String title, String archetype, String summary) {}
-    private record StandingRecord(int level, int totalExperience, int nextThreshold, int masteryLevels, int readyPoints, int spentPoints, int earnedPoints) {}
+    private record StandingRecord(int masteryLevels, int readyPoints, int spentPoints) {}
 }

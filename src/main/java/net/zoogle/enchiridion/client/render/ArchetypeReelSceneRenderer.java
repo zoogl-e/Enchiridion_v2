@@ -30,15 +30,14 @@ public final class ArchetypeReelSceneRenderer {
         if (state == null || !state.active() || state.choices().isEmpty()) {
             return new ReelLayout(cards);
         }
+        int size = state.choices().size();
         float animatedFocus = state.animatedFocusPosition();
-        int focusedFloor = (int) Math.floor(animatedFocus);
-        for (int offset = -2; offset <= 2; offset++) {
-            int index = Math.floorMod(focusedFloor + offset, state.choices().size());
-            float relativeOffset = wrappedRelativeOffset(index, animatedFocus, state.choices().size());
-            if (Math.abs(relativeOffset) > 2.35f) {
+        for (int index = 0; index < size; index++) {
+            float relativeOffset = wrappedRelativeOffset(index, animatedFocus, size);
+            if (Math.abs(relativeOffset) > 2.5f) {
                 continue;
             }
-            cards.add(buildPlacedCard(index, state.choices().get(index), relativeOffset));
+            cards.add(buildPlacedCard(index, state.choices().get(index), relativeOffset, state));
         }
         cards.sort(Comparator.comparingDouble(PlacedCard::centerZ));
         return new ReelLayout(cards);
@@ -50,9 +49,9 @@ public final class ArchetypeReelSceneRenderer {
             int packedLight,
             float sceneScale,
             RenderLayer renderLayer,
-            ArchetypeReelState state
+            ArchetypeReelState state,
+            ReelLayout layout
     ) {
-        ReelLayout layout = layout(state);
         if (layout.cards().isEmpty()) {
             return;
         }
@@ -73,7 +72,8 @@ public final class ArchetypeReelSceneRenderer {
             ArchetypeReelState state
     ) {
         poseStack.pushPose();
-        poseStack.translate(card.centerX(), card.centerY(), card.centerZ());
+        // Match SurfaceProjectionService: reel centers are in model units and scaled by scene scale before screen mapping.
+        poseStack.translate(card.centerX() * sceneScale, card.centerY() * sceneScale, card.centerZ() * sceneScale);
         poseStack.mulPose(Axis.YP.rotationDegrees(card.yawDegrees()));
         if (card.focused()) {
             poseStack.mulPose(Axis.YP.rotationDegrees(state.focusedTiltYaw()));
@@ -85,79 +85,68 @@ public final class ArchetypeReelSceneRenderer {
         CardTint tint = tintFor(card, state);
         float halfWidth = CARD_WIDTH * 0.5f;
         float halfHeight = CARD_HEIGHT * 0.5f;
+
         if (card.focused()) {
-            float outlineScale = 1.1f + (outlinePulse(state) * 0.035f);
-            emitFace(
-                poseStack,
-                buffer,
-                packedLight,
-                -halfWidth * outlineScale,
-                -halfHeight * outlineScale,
-                -CARD_THICKNESS * 2.2f,
-                halfWidth * outlineScale,
-                halfHeight * outlineScale,
-                249,
-                232,
-                191,
-                132,
-                0.0f,
-                0.0f,
-                -1.0f
-            );
-            emitFace(
-                poseStack,
-                buffer,
-                packedLight,
-                -halfWidth * 1.03f,
-                -halfHeight * 1.03f,
-                -CARD_THICKNESS * 1.15f,
-                halfWidth * 1.03f,
-                halfHeight * 1.03f,
-                116,
-                82,
-                44,
-                118,
-                0.0f,
-                0.0f,
-                -1.0f
-            );
+            float pulse = outlinePulse(state);
+            float global = state.globalPresentationAlpha();
+            // Place the outline strips just in front of the card face so they sit at the edges cleanly.
+            float outlineZ = CARD_THICKNESS + 0.008f;
+
+            // Outer penumbra — wide dim-amber strips that suggest a warm aura around the card.
+            float auraWidth = 0.22f + (pulse * 0.12f);
+            int auraAlpha = Math.min(255, Math.round((145 + (pulse * 60)) * global));
+            emitCardOutline(poseStack, buffer, packedLight, halfWidth, halfHeight, outlineZ,
+                    auraWidth, 160, 110, 32, auraAlpha);
+
+            // Crisp inner rim — bright gold border that tightens on top of the aura.
+            float rimWidth = 0.055f + (pulse * 0.018f);
+            int rimAlpha = Math.min(255, Math.round((225 + (pulse * 30)) * global));
+            emitCardOutline(poseStack, buffer, packedLight, halfWidth, halfHeight, outlineZ,
+                    rimWidth, 255, 228, 100, rimAlpha);
         }
 
-        emitFace(
-                poseStack,
-                buffer,
-                packedLight,
-                -halfWidth,
-                -halfHeight,
-                CARD_THICKNESS,
-                halfWidth,
-                halfHeight,
-                tint.red(),
-                tint.green(),
-                tint.blue(),
-                tint.alpha(),
-                0.0f,
-                0.0f,
-                1.0f
-        );
-        emitFace(
-                poseStack,
-                buffer,
-                packedLight,
-                -halfWidth,
-                -halfHeight,
-                -CARD_THICKNESS,
-                halfWidth,
-                halfHeight,
-                Math.max(18, tint.red() - 42),
-                Math.max(14, tint.green() - 42),
-                Math.max(10, tint.blue() - 42),
-                tint.alpha(),
-                0.0f,
-                0.0f,
-                -1.0f
-        );
+        // Front face.
+        emitFace(poseStack, buffer, packedLight,
+                -halfWidth, -halfHeight, CARD_THICKNESS, halfWidth, halfHeight,
+                tint.red(), tint.green(), tint.blue(), tint.alpha(), 0.0f, 0.0f, 1.0f);
+        // Back face (slightly darker).
+        emitFace(poseStack, buffer, packedLight,
+                -halfWidth, -halfHeight, -CARD_THICKNESS, halfWidth, halfHeight,
+                Math.max(18, tint.red() - 42), Math.max(14, tint.green() - 42), Math.max(10, tint.blue() - 42),
+                tint.alpha(), 0.0f, 0.0f, -1.0f);
         poseStack.popPose();
+    }
+
+    /**
+     * Emits four thin border strips just outside the card's half-extents, forming a rectangular outline.
+     * The horizontal strips cover the full width including corners; vertical strips fill the remaining sides.
+     */
+    private void emitCardOutline(
+            PoseStack poseStack,
+            VertexConsumer buffer,
+            int packedLight,
+            float halfW,
+            float halfH,
+            float z,
+            float bw,
+            int r, int g, int b, int a
+    ) {
+        // Top strip — full width including corners.
+        emitFace(poseStack, buffer, packedLight,
+                -(halfW + bw), -(halfH + bw), z, (halfW + bw), -halfH,
+                r, g, b, a, 0.0f, 0.0f, 1.0f);
+        // Bottom strip — full width including corners.
+        emitFace(poseStack, buffer, packedLight,
+                -(halfW + bw), halfH, z, (halfW + bw), (halfH + bw),
+                r, g, b, a, 0.0f, 0.0f, 1.0f);
+        // Left strip — between top and bottom strips.
+        emitFace(poseStack, buffer, packedLight,
+                -(halfW + bw), -halfH, z, -halfW, halfH,
+                r, g, b, a, 0.0f, 0.0f, 1.0f);
+        // Right strip — between top and bottom strips.
+        emitFace(poseStack, buffer, packedLight,
+                halfW, -halfH, z, (halfW + bw), halfH,
+                r, g, b, a, 0.0f, 0.0f, 1.0f);
     }
 
     private void emitFace(
@@ -209,7 +198,8 @@ public final class ArchetypeReelSceneRenderer {
         int baseRed = 154 + Math.floorMod(hash, 46);
         int baseGreen = 116 + Math.floorMod(hash >> 3, 48);
         int baseBlue = 88 + Math.floorMod(hash >> 6, 58);
-        int alpha = Math.round(card.alpha() * 255.0f);
+        float global = state.globalPresentationAlpha();
+        int alpha = Math.min(255, Math.round(card.alpha() * 255.0f * global));
         if (card.focused()) {
             return new CardTint(
                 Math.min(255, baseRed + 50),
@@ -220,10 +210,10 @@ public final class ArchetypeReelSceneRenderer {
         }
         if (card.index() == state.hoveredIndex()) {
             return new CardTint(
-                Math.min(255, baseRed + 28),
-                Math.min(255, baseGreen + 24),
-                Math.min(255, baseBlue + 20),
-                Math.min(255, alpha + 22)
+                    Math.min(255, baseRed + 28),
+                    Math.min(255, baseGreen + 24),
+                    Math.min(255, baseBlue + 20),
+                    Math.min(255, alpha + Math.round(22 * global))
             );
         }
         return new CardTint(baseRed, baseGreen, baseBlue, alpha);
@@ -237,23 +227,46 @@ public final class ArchetypeReelSceneRenderer {
         };
     }
 
-    private PlacedCard buildPlacedCard(int index, JournalArchetypeChoice choice, float relativeOffset) {
-        ReelSlot slot = slotFor(relativeOffset);
-        ReelSlot nextSlot = nextSlotToward(relativeOffset, slot);
-        float slotProgress = slotProgress(relativeOffset, slot);
-        boolean front = slot == ReelSlot.FOCUSED || nextSlot == ReelSlot.FOCUSED;
+    private PlacedCard buildPlacedCard(int index, JournalArchetypeChoice choice, float relativeOffset, ArchetypeReelState state) {
+        InterpolatedSlot slot = interpolateSlot(relativeOffset);
+        boolean focused = Math.abs(relativeOffset) < 0.08f
+                || (state.phase() == ArchetypeReelState.Phase.IDLE && index == state.settledFocusedIndex());
+        boolean front = slot.centerZ() >= 7.8f;
         return new PlacedCard(
             index,
             choice,
-            lerp(slot.centerX(), nextSlot.centerX(), slotProgress),
-            lerp(slot.centerY(), nextSlot.centerY(), slotProgress),
-            lerp(slot.centerZ(), nextSlot.centerZ(), slotProgress),
-            lerp(slot.scale(), nextSlot.scale(), slotProgress),
-            lerp(slot.yawDegrees(), nextSlot.yawDegrees(), slotProgress),
-            lerp(slot.alpha(), nextSlot.alpha(), slotProgress),
+            slot.centerX(),
+            slot.centerY(),
+            slot.centerZ(),
+            slot.scale(),
+            slot.yawDegrees(),
+            slot.alpha(),
             front ? RenderLayer.FRONT : RenderLayer.BACK,
-            slot == ReelSlot.FOCUSED || nextSlot == ReelSlot.FOCUSED
+            focused
         );
+    }
+
+    private InterpolatedSlot interpolateSlot(float relativeOffset) {
+        if (relativeOffset <= -2.0f) {
+            return InterpolatedSlot.of(ReelSlot.FAR_LEFT);
+        }
+        if (relativeOffset < -1.0f) {
+            float t = -relativeOffset - 1.0f;
+            return InterpolatedSlot.lerp(ReelSlot.LEFT, ReelSlot.FAR_LEFT, t);
+        }
+        if (relativeOffset < 0.0f) {
+            float t = -relativeOffset;
+            return InterpolatedSlot.lerp(ReelSlot.FOCUSED, ReelSlot.LEFT, t);
+        }
+        if (relativeOffset < 1.0f) {
+            float t = relativeOffset;
+            return InterpolatedSlot.lerp(ReelSlot.FOCUSED, ReelSlot.RIGHT, t);
+        }
+        if (relativeOffset < 2.0f) {
+            float t = relativeOffset - 1.0f;
+            return InterpolatedSlot.lerp(ReelSlot.RIGHT, ReelSlot.FAR_RIGHT, t);
+        }
+        return InterpolatedSlot.of(ReelSlot.FAR_RIGHT);
     }
 
     private float wrappedRelativeOffset(int index, float animatedFocus, int size) {
@@ -270,10 +283,6 @@ public final class ArchetypeReelSceneRenderer {
         return best;
     }
 
-    private float lerp(float from, float to, float progress) {
-        return from + ((to - from) * progress);
-    }
-
     private int artVariantKey(JournalArchetypeChoice choice, int fallback) {
         String artKey = choice.artKey();
         if (artKey != null && !artKey.isBlank()) {
@@ -281,42 +290,6 @@ public final class ArchetypeReelSceneRenderer {
         }
         @Nullable ResourceLocation archetypeId = choice.archetypeId();
         return archetypeId == null ? fallback : archetypeId.hashCode();
-    }
-
-    private ReelSlot slotFor(float relativeOffset) {
-        float magnitude = Math.abs(relativeOffset);
-        if (magnitude < 0.5f) {
-            return ReelSlot.FOCUSED;
-        }
-        if (magnitude < 1.5f) {
-            return relativeOffset < 0.0f ? ReelSlot.LEFT : ReelSlot.RIGHT;
-        }
-        return relativeOffset < 0.0f ? ReelSlot.FAR_LEFT : ReelSlot.FAR_RIGHT;
-    }
-
-    private ReelSlot nextSlotToward(float relativeOffset, ReelSlot current) {
-        return switch (current) {
-            case FOCUSED -> relativeOffset < 0.0f ? ReelSlot.LEFT : ReelSlot.RIGHT;
-            case LEFT -> relativeOffset < -1.0f ? ReelSlot.FAR_LEFT : ReelSlot.FOCUSED;
-            case RIGHT -> relativeOffset > 1.0f ? ReelSlot.FAR_RIGHT : ReelSlot.FOCUSED;
-            case FAR_LEFT -> ReelSlot.LEFT;
-            case FAR_RIGHT -> ReelSlot.RIGHT;
-        };
-    }
-
-    private float slotProgress(float relativeOffset, ReelSlot slot) {
-        float magnitude = Math.abs(relativeOffset);
-        return switch (slot) {
-            case FOCUSED -> clamp(magnitude / 0.5f, 0.0f, 1.0f);
-            case LEFT, RIGHT -> magnitude < 1.0f
-                ? clamp((1.0f - magnitude) / 0.5f, 0.0f, 1.0f)
-                : clamp((magnitude - 1.0f) / 0.5f, 0.0f, 1.0f);
-            case FAR_LEFT, FAR_RIGHT -> clamp((2.0f - magnitude) / 0.5f, 0.0f, 1.0f);
-        };
-    }
-
-    private float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     public record ReelLayout(List<PlacedCard> cards) {}
@@ -336,17 +309,49 @@ public final class ArchetypeReelSceneRenderer {
 
     private record CardTint(int red, int green, int blue, int alpha) {}
 
+    private record InterpolatedSlot(
+        float centerX,
+        float centerY,
+        float centerZ,
+        float scale,
+        float yawDegrees,
+        float alpha
+    ) {
+        static InterpolatedSlot of(ReelSlot slot) {
+            return new InterpolatedSlot(
+                slot.centerX(),
+                slot.centerY(),
+                slot.centerZ(),
+                slot.scale(),
+                slot.yawDegrees(),
+                slot.alpha()
+            );
+        }
+
+        static InterpolatedSlot lerp(ReelSlot from, ReelSlot to, float t) {
+            return new InterpolatedSlot(
+                from.centerX() + ((to.centerX() - from.centerX()) * t),
+                from.centerY() + ((to.centerY() - from.centerY()) * t),
+                from.centerZ() + ((to.centerZ() - from.centerZ()) * t),
+                from.scale() + ((to.scale() - from.scale()) * t),
+                from.yawDegrees() + ((to.yawDegrees() - from.yawDegrees()) * t),
+                from.alpha() + ((to.alpha() - from.alpha()) * t)
+            );
+        }
+    }
+
     public enum RenderLayer {
         BACK,
         FRONT
     }
 
     private enum ReelSlot {
-        FOCUSED(-1.65f, -1.56f, 12.4f, 1.58f, 0.0f, 1.0f),
-        LEFT(-5.45f, -0.72f, -6.7f, 0.66f, 35.0f, 0.8f),
-        RIGHT(3.45f, -0.72f, -6.3f, 0.66f, -35.0f, 0.8f),
-        FAR_LEFT(-8.5f, -0.34f, -10.6f, 0.5f, 44.0f, 0.24f),
-        FAR_RIGHT(6.8f, -0.34f, -10.2f, 0.5f, -44.0f, 0.24f);
+        // Center hero card + smaller neighbors (mockup: prev | focused | next).
+        FOCUSED(0.0f, -0.68f, 9.35f, 1.34f, 0.0f, 1.0f),
+        LEFT(-11.0f, -0.62f, 7.15f, 0.86f, 4.0f, 0.92f),
+        RIGHT(11.0f, -0.62f, 7.15f, 0.86f, -4.0f, 0.92f),
+        FAR_LEFT(-17.0f, -0.5f, 5.0f, 0.68f, 6.0f, 0.58f),
+        FAR_RIGHT(17.0f, -0.5f, 5.0f, 0.68f, -6.0f, 0.58f);
 
         private final float centerX;
         private final float centerY;

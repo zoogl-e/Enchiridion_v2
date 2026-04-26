@@ -399,6 +399,7 @@ public final class LevelRpgJournalTemplateEditor {
             case TITLE, FOCAL, SUBTITLE, BODY, FOOTER, STATS -> String.join("\n", textLinesInRegion(page, region));
             case INTERACTION -> firstInteractiveLabelInRegion(page, region);
             case ROWS -> ledgerRowsInRegion(page, region);
+            case RADAR -> "";
         };
     }
 

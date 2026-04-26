@@ -20,6 +20,7 @@ public record BookTrackedRegion(
     }
 
     public enum Anchor {
-        FRONT_COVER_CARD
+        FRONT_COVER_CARD,
+        FRONT_COVER_TITLE
     }
 }

@@ -7,6 +7,7 @@ enum JournalPageSlot {
     BODY,
     ROWS,
     STATS,
+    RADAR,
     FOOTER,
     INTERACTION
 }

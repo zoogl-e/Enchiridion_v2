@@ -3,6 +3,7 @@ package net.zoogle.enchiridion.api;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.List;
 import java.util.Objects;
 
 public sealed interface BookPageElement permits
@@ -12,7 +13,8 @@ public sealed interface BookPageElement permits
         BookPageElement.BoxElement,
         BookPageElement.ProgressBarElement,
         BookPageElement.ImageElement,
-        BookPageElement.WidgetElement {
+        BookPageElement.WidgetElement,
+        BookPageElement.RadarChartElement {
 
     int x();
 
@@ -187,6 +189,38 @@ public sealed interface BookPageElement permits
         public WidgetElement {
             Objects.requireNonNull(widgetType, "widgetType");
             Objects.requireNonNull(label, "label");
+            width = Math.max(1, width);
+            height = Math.max(1, height);
+        }
+    }
+
+    record RadarChartElement(
+            int x,
+            int y,
+            int width,
+            int height,
+            List<Float> values,
+            List<Float> masteryLevelValues,
+            List<Float> nextMasteryRingValues,
+            List<String> labels,
+            int fillColor,
+            int strokeColor,
+            int axisColor,
+            int gridColor,
+            /** Stroke color for the current mastery level ring (outline only). */
+            int masteryFillColor,
+            /** Stroke color for the (mastery + 1) soft-cap ring (outline only). */
+            int nextMasteryRingColor
+    ) implements BookPageElement {
+        public RadarChartElement {
+            Objects.requireNonNull(values, "values");
+            Objects.requireNonNull(masteryLevelValues, "masteryLevelValues");
+            Objects.requireNonNull(nextMasteryRingValues, "nextMasteryRingValues");
+            Objects.requireNonNull(labels, "labels");
+            values = List.copyOf(values);
+            masteryLevelValues = List.copyOf(masteryLevelValues);
+            nextMasteryRingValues = List.copyOf(nextMasteryRingValues);
+            labels = List.copyOf(labels);
             width = Math.max(1, width);
             height = Math.max(1, height);
         }
