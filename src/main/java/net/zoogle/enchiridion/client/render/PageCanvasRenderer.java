@@ -9,15 +9,16 @@ import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookTextBlock;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.ui.BookDebugSettings;
+import net.zoogle.enchiridion.client.levelrpg.journal.layout.PageContentMetrics;
+import net.zoogle.enchiridion.client.render.widget.RadarChartElementRenderer;
+import net.zoogle.enchiridion.client.render.widget.SkillTreeCanvasWidgetRenderer;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.font.FontRenderContext;
 import java.awt.font.LineMetrics;
 import java.awt.geom.Rectangle2D;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public final class PageCanvasRenderer {
     private static final int ROW_TEXT_VISUAL_BIAS_Y = -1;
@@ -213,7 +214,7 @@ public final class PageCanvasRenderer {
             case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
             }
-            case BookPageElement.RadarChartElement radarChart -> renderRadarChart(graphics, radarChart, textAlpha);
+            case BookPageElement.RadarChartElement radarChart -> RadarChartElementRenderer.renderRadarChart(graphics, radarChart, textAlpha);
             case BookPageElement.WidgetElement widget ->
                     renderWidget(graphics, widget, textAlpha);
         }
@@ -233,7 +234,7 @@ public final class PageCanvasRenderer {
             case BookPageElement.ProgressBarElement progressBar -> renderProgressBar(graphics, progressBar, textAlpha);
             case BookPageElement.ImageElement ignored -> {
             }
-            case BookPageElement.RadarChartElement radarChart -> renderRadarChart(graphics, radarChart, textAlpha);
+            case BookPageElement.RadarChartElement radarChart -> RadarChartElementRenderer.renderRadarChart(graphics, radarChart, textAlpha);
             case BookPageElement.WidgetElement widget ->
                     renderWidget(graphics, widget, textAlpha);
         }
@@ -241,7 +242,7 @@ public final class PageCanvasRenderer {
 
     private void renderWidget(GuiGraphics graphics, BookPageElement.WidgetElement widget, float textAlpha) {
         if ("skill_tree_canvas".equals(widget.widgetType())) {
-            renderSkillTreeWidget(graphics, widget, textAlpha);
+            SkillTreeCanvasWidgetRenderer.renderSkillTreeWidget(graphics, widget, textAlpha);
             return;
         }
         renderLine(graphics, widget.label().getString(), widget.x(), widget.y(), widget.width(), applyAlpha(0xFF5A3F29, textAlpha), BookTextBlock.Kind.BODY, textAlpha, 0, 0.0f);
@@ -249,7 +250,7 @@ public final class PageCanvasRenderer {
 
     private void renderWidget(Graphics2D graphics, BookPageElement.WidgetElement widget, float textAlpha) {
         if ("skill_tree_canvas".equals(widget.widgetType())) {
-            renderSkillTreeWidget(graphics, widget, textAlpha);
+            SkillTreeCanvasWidgetRenderer.renderSkillTreeWidget(graphics, widget, textAlpha);
             return;
         }
         renderLine(graphics, widget.label().getString(), widget.x(), widget.y() + graphics.getFontMetrics().getAscent(), widget.width(), applyAlpha(0xFF5A3F29, textAlpha), BookTextBlock.Kind.BODY, textAlpha, 0, 0.0f);
@@ -489,300 +490,7 @@ public final class PageCanvasRenderer {
         }
     }
 
-    private void renderRadarChart(GuiGraphics graphics, BookPageElement.RadarChartElement chart, float textAlpha) {
-        java.util.List<Float> values = chart.values();
-        int n = values.size();
-        if (n < 3) return;
-        int cx = chart.x() + chart.width() / 2;
-        int cy = chart.y() + chart.height() / 2;
-        int radius = Math.min(chart.width(), chart.height()) / 2 - 2;
-        if (radius < 4) return;
-        int axisColor = applyAlpha(chart.axisColor(), textAlpha);
-        int strokeColor = applyAlpha(chart.strokeColor(), textAlpha);
-        int fillColor = applyAlpha(chart.fillColor(), textAlpha);
-        int gridColor = applyAlpha(chart.gridColor(), textAlpha);
-        int masteryFill = applyAlpha(chart.masteryFillColor(), textAlpha);
-        int nextRingStroke = applyAlpha(chart.nextMasteryRingColor(), textAlpha);
-        int[] outerXs = new int[n], outerYs = new int[n];
-        int[] dataXs = new int[n], dataYs = new int[n];
-        int[] nextRingXs = new int[n], nextRingYs = new int[n];
-        int[] masteryXs = new int[n], masteryYs = new int[n];
-        for (int i = 0; i < n; i++) {
-            double angle = -Math.PI / 2.0 + 2.0 * Math.PI * i / n;
-            outerXs[i] = cx + (int) Math.round(radius * Math.cos(angle));
-            outerYs[i] = cy + (int) Math.round(radius * Math.sin(angle));
-        }
-        buildRadarLayerPolygon(n, cx, cy, radius, values, dataXs, dataYs);
-        java.util.List<Float> nextRing = chart.nextMasteryRingValues();
-        java.util.List<Float> masteryLevel = chart.masteryLevelValues();
-        if (nextRing.size() == n) {
-            buildRadarLayerPolygon(n, cx, cy, radius, nextRing, nextRingXs, nextRingYs);
-        }
-        if (masteryLevel.size() == n) {
-            buildRadarLayerPolygon(n, cx, cy, radius, masteryLevel, masteryXs, masteryYs);
-        }
-        for (int ring = 1; ring <= 5; ring++) {
-            int r = Math.max(2, radius * ring / 5);
-            drawEllipseGui(graphics, cx, cy, r, gridColor);
-        }
-        for (int i = 0; i < n; i++) {
-            drawLineGui(graphics, cx, cy, outerXs[i], outerYs[i], axisColor);
-        }
-        fillPolygonGui(graphics, dataXs, dataYs, n, fillColor);
-        if (nextRing.size() == n) {
-            drawPolygonOutlineGui(graphics, nextRingXs, nextRingYs, n, nextRingStroke);
-        }
-        if (masteryLevel.size() == n) {
-            drawPolygonOutlineGui(graphics, masteryXs, masteryYs, n, masteryFill);
-        }
-        for (int i = 0; i < n; i++) {
-            int j = (i + 1) % n;
-            drawLineGui(graphics, dataXs[i], dataYs[i], dataXs[j], dataYs[j], strokeColor);
-        }
-        for (int i = 0; i < n; i++) {
-            graphics.fill(dataXs[i] - 1, dataYs[i] - 1, dataXs[i] + 2, dataYs[i] + 2, strokeColor);
-        }
-    }
-
-    private static void drawPolygonOutlineGui(GuiGraphics graphics, int[] xs, int[] ys, int n, int color) {
-        if (n < 2) {
-            return;
-        }
-        for (int i = 0; i < n; i++) {
-            int j = (i + 1) % n;
-            drawLineGui(graphics, xs[i], ys[i], xs[j], ys[j], color);
-        }
-    }
-
-    private static void buildRadarLayerPolygon(
-            int n,
-            int cx,
-            int cy,
-            int radius,
-            java.util.List<Float> valueRing,
-            int[] xs,
-            int[] ys) {
-        for (int i = 0; i < n; i++) {
-            double angle = -Math.PI / 2.0 + 2.0 * Math.PI * i / n;
-            float v = 0.0f;
-            if (valueRing != null && i < valueRing.size()) {
-                v = valueRing.get(i);
-            }
-            v = Math.max(0.0f, Math.min(1.0f, v));
-            int r = Math.max(1, (int) Math.round(radius * v));
-            xs[i] = cx + (int) Math.round(r * Math.cos(angle));
-            ys[i] = cy + (int) Math.round(r * Math.sin(angle));
-        }
-    }
-
-    private void renderRadarChart(Graphics2D graphics, BookPageElement.RadarChartElement chart, float textAlpha) {
-        java.util.List<Float> values = chart.values();
-        java.util.List<String> labels = chart.labels();
-        int n = values.size();
-        if (n < 3) return;
-        int cx = chart.x() + chart.width() / 2;
-        int cy = chart.y() + chart.height() / 2;
-        int radius = Math.min(chart.width(), chart.height()) / 2 - 2;
-        if (radius < 4) return;
-        for (int ring = 1; ring <= 5; ring++) {
-            int r = Math.max(2, radius * ring / 5);
-            graphics.setColor(new Color(applyAlpha(chart.gridColor(), textAlpha), true));
-            graphics.drawOval(cx - r, cy - r, r * 2, r * 2);
-        }
-        graphics.setColor(new Color(applyAlpha(chart.axisColor(), textAlpha), true));
-        for (int i = 0; i < n; i++) {
-            double angle = -Math.PI / 2.0 + 2.0 * Math.PI * i / n;
-            int ax = cx + (int) Math.round(radius * Math.cos(angle));
-            int ay = cy + (int) Math.round(radius * Math.sin(angle));
-            graphics.drawLine(cx, cy, ax, ay);
-        }
-        int[] mainXs = new int[n], mainYs = new int[n];
-        buildRadarLayerPolygon(n, cx, cy, radius, values, mainXs, mainYs);
-        java.util.List<Float> nextRingList = chart.nextMasteryRingValues();
-        java.util.List<Float> masteryLevel = chart.masteryLevelValues();
-        int[] nextRingXs = new int[n], nextRingYs = new int[n];
-        int[] masteryXs = new int[n], masteryYs = new int[n];
-        if (nextRingList.size() == n) {
-            buildRadarLayerPolygon(n, cx, cy, radius, nextRingList, nextRingXs, nextRingYs);
-        }
-        if (masteryLevel.size() == n) {
-            buildRadarLayerPolygon(n, cx, cy, radius, masteryLevel, masteryXs, masteryYs);
-        }
-        graphics.setColor(new Color(applyAlpha(chart.fillColor(), textAlpha), true));
-        graphics.fillPolygon(mainXs, mainYs, n);
-        if (nextRingList.size() == n) {
-            graphics.setColor(new Color(applyAlpha(chart.nextMasteryRingColor(), textAlpha), true));
-            graphics.drawPolygon(nextRingXs, nextRingYs, n);
-        }
-        if (masteryLevel.size() == n) {
-            graphics.setColor(new Color(applyAlpha(chart.masteryFillColor(), textAlpha), true));
-            graphics.drawPolygon(masteryXs, masteryYs, n);
-        }
-        graphics.setColor(new Color(applyAlpha(chart.strokeColor(), textAlpha), true));
-        graphics.drawPolygon(mainXs, mainYs, n);
-        for (int i = 0; i < n; i++) {
-            graphics.fillOval(mainXs[i] - 1, mainYs[i] - 1, 3, 3);
-        }
-        if (!labels.isEmpty()) {
-            java.awt.Font labelFont = PAGE_TEXTURE_FONT.deriveFont(java.awt.Font.PLAIN, 11.0f);
-            java.awt.FontMetrics fm = graphics.getFontMetrics(labelFont);
-            java.awt.Font prevFont = graphics.getFont();
-            graphics.setFont(labelFont);
-            int labelOffset = radius + 6;
-            for (int i = 0; i < Math.min(n, labels.size()); i++) {
-                double angle = -Math.PI / 2.0 + 2.0 * Math.PI * i / n;
-                int lx = cx + (int) Math.round(labelOffset * Math.cos(angle));
-                int ly = cy + (int) Math.round(labelOffset * Math.sin(angle));
-                String label = labels.get(i);
-                int labelW = fm.stringWidth(label);
-                graphics.setColor(new Color(applyAlpha(chart.axisColor(), textAlpha * 1.2f), true));
-                graphics.drawString(label, lx - labelW / 2, ly + fm.getAscent() / 2);
-            }
-            graphics.setFont(prevFont);
-        }
-    }
-
-    private void renderSkillTreeWidget(GuiGraphics graphics, BookPageElement.WidgetElement widget, float textAlpha) {
-        Map<String, String> payload = parseWidgetPayload(widget.label().getString());
-        boolean left = "L".equalsIgnoreCase(payload.getOrDefault("side", "L"));
-        int unlocked = parseInt(payload.get("unlocked"), 3);
-        int seed = parseInt(payload.get("seed"), 0);
-
-        int panelFill = applyAlpha(0x06C4B79D, textAlpha);
-        int panelBorder = applyAlpha(0x6A584229, textAlpha);
-        graphics.fill(widget.x(), widget.y(), widget.x() + widget.width(), widget.y() + widget.height(), panelFill);
-        graphics.fill(widget.x(), widget.y(), widget.x() + widget.width(), widget.y() + 1, panelBorder);
-        graphics.fill(widget.x(), widget.y() + widget.height() - 1, widget.x() + widget.width(), widget.y() + widget.height(), panelBorder);
-        graphics.fill(widget.x(), widget.y(), widget.x() + 1, widget.y() + widget.height(), panelBorder);
-        graphics.fill(widget.x() + widget.width() - 1, widget.y(), widget.x() + widget.width(), widget.y() + widget.height(), panelBorder);
-
-        int[][] nodes = skillTreeNodes(widget, left, seed);
-        int[][] edges = skillTreeEdges(left);
-        for (int[] edge : edges) {
-            drawLineGui(graphics, nodes[edge[0]][0], nodes[edge[0]][1], nodes[edge[1]][0], nodes[edge[1]][1], applyAlpha(0xCC4F3B24, textAlpha));
-        }
-        for (int i = 0; i < nodes.length; i++) {
-            boolean isUnlocked = i < unlocked;
-            drawSkillTreeNode(graphics, nodes[i][0], nodes[i][1], isUnlocked, textAlpha);
-        }
-    }
-
-    private void renderSkillTreeWidget(Graphics2D graphics, BookPageElement.WidgetElement widget, float textAlpha) {
-        Map<String, String> payload = parseWidgetPayload(widget.label().getString());
-        boolean left = "L".equalsIgnoreCase(payload.getOrDefault("side", "L"));
-        int unlocked = parseInt(payload.get("unlocked"), 3);
-        int seed = parseInt(payload.get("seed"), 0);
-
-        graphics.setColor(new Color(applyAlpha(0x06C4B79D, textAlpha), true));
-        graphics.fillRect(widget.x(), widget.y(), widget.width(), widget.height());
-        graphics.setColor(new Color(applyAlpha(0x6A584229, textAlpha), true));
-        graphics.drawRect(widget.x(), widget.y(), Math.max(1, widget.width() - 1), Math.max(1, widget.height() - 1));
-
-        int[][] nodes = skillTreeNodes(widget, left, seed);
-        int[][] edges = skillTreeEdges(left);
-        graphics.setColor(new Color(applyAlpha(0xCC4F3B24, textAlpha), true));
-        for (int[] edge : edges) {
-            graphics.drawLine(nodes[edge[0]][0], nodes[edge[0]][1], nodes[edge[1]][0], nodes[edge[1]][1]);
-        }
-        for (int i = 0; i < nodes.length; i++) {
-            boolean isUnlocked = i < unlocked;
-            drawSkillTreeNode(graphics, nodes[i][0], nodes[i][1], isUnlocked, textAlpha);
-        }
-    }
-
-    private void drawSkillTreeNode(GuiGraphics graphics, int centerX, int centerY, boolean unlocked, float textAlpha) {
-        int border = applyAlpha(unlocked ? 0xFFC0934D : 0xFF5A4B36, textAlpha);
-        int fill = applyAlpha(unlocked ? 0xFF356547 : 0xFF2A2927, textAlpha);
-        int glyph = applyAlpha(unlocked ? 0xFFE5F1E8 : 0xFF9A8F82, textAlpha);
-        int x = centerX - 4;
-        int y = centerY - 4;
-        graphics.fill(x, y, x + 9, y + 9, border);
-        graphics.fill(x + 1, y + 1, x + 8, y + 8, fill);
-        graphics.fill(x + 4, y + 2, x + 5, y + 7, glyph);
-        graphics.fill(x + 2, y + 4, x + 7, y + 5, glyph);
-    }
-
-    private void drawSkillTreeNode(Graphics2D graphics, int centerX, int centerY, boolean unlocked, float textAlpha) {
-        int border = applyAlpha(unlocked ? 0xFFC0934D : 0xFF5A4B36, textAlpha);
-        int fill = applyAlpha(unlocked ? 0xFF356547 : 0xFF2A2927, textAlpha);
-        int glyph = applyAlpha(unlocked ? 0xFFE5F1E8 : 0xFF9A8F82, textAlpha);
-        int x = centerX - 4;
-        int y = centerY - 4;
-        graphics.setColor(new Color(border, true));
-        graphics.fillRect(x, y, 9, 9);
-        graphics.setColor(new Color(fill, true));
-        graphics.fillRect(x + 1, y + 1, 7, 7);
-        graphics.setColor(new Color(glyph, true));
-        graphics.fillRect(x + 4, y + 2, 1, 5);
-        graphics.fillRect(x + 2, y + 4, 5, 1);
-    }
-
-    private static int[][] skillTreeNodes(BookPageElement.WidgetElement widget, boolean left, int seed) {
-        int x = widget.x();
-        int y = widget.y();
-        int jitter = Math.floorMod(seed, 3) - 1;
-        if (left) {
-            return new int[][]{
-                    {x + 10, y + 12 + jitter},
-                    {x + 26, y + 17},
-                    {x + 42, y + 22 - jitter},
-                    {x + 14, y + 32},
-                    {x + 34, y + 38 + jitter},
-                    {x + 20, y + 52},
-                    {x + 46, y + 58},
-                    {x + 30, y + 72}
-            };
-        }
-        return new int[][]{
-                {x + 8, y + 14},
-                {x + 24, y + 19 - jitter},
-                {x + 40, y + 13},
-                {x + 12, y + 34 + jitter},
-                {x + 30, y + 40},
-                {x + 48, y + 36},
-                {x + 18, y + 58},
-                {x + 40, y + 66 - jitter}
-        };
-    }
-
-    private static int[][] skillTreeEdges(boolean left) {
-        if (left) {
-            return new int[][]{
-                    {0, 1}, {1, 2}, {0, 3}, {1, 4}, {2, 4}, {3, 5}, {4, 6}, {5, 7}, {6, 7}
-            };
-        }
-        return new int[][]{
-                {0, 1}, {1, 2}, {0, 3}, {1, 4}, {2, 5}, {3, 6}, {4, 6}, {4, 7}, {5, 7}
-        };
-    }
-
-    private static Map<String, String> parseWidgetPayload(String payload) {
-        Map<String, String> values = new HashMap<>();
-        if (payload == null || payload.isBlank()) {
-            return values;
-        }
-        for (String entry : payload.split(";")) {
-            String[] parts = entry.split("=", 2);
-            if (parts.length != 2) {
-                continue;
-            }
-            values.put(parts[0].trim().toLowerCase(), parts[1].trim());
-        }
-        return values;
-    }
-
-    private static int parseInt(String value, int fallback) {
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
-    }
-
-    private static void drawLineGui(GuiGraphics graphics, int x0, int y0, int x1, int y1, int color) {
+    public static void drawLineGui(GuiGraphics graphics, int x0, int y0, int x1, int y1, int color) {
         int dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
         int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
         int err = dx - dy;
@@ -792,40 +500,6 @@ public final class PageCanvasRenderer {
             int e2 = 2 * err;
             if (e2 > -dy) { err -= dy; x0 += sx; }
             if (e2 < dx) { err += dx; y0 += sy; }
-        }
-    }
-
-    private static void drawEllipseGui(GuiGraphics graphics, int cx, int cy, int r, int color) {
-        int x = 0, y = r, d = 3 - 2 * r;
-        while (x <= y) {
-            for (int[] pt : new int[][]{{cx+x,cy+y},{cx-x,cy+y},{cx+x,cy-y},{cx-x,cy-y},{cx+y,cy+x},{cx-y,cy+x},{cx+y,cy-x},{cx-y,cy-x}}) {
-                graphics.fill(pt[0], pt[1], pt[0] + 1, pt[1] + 1, color);
-            }
-            if (d < 0) d += 4 * x + 6;
-            else { d += 4 * (x - y) + 10; y--; }
-            x++;
-        }
-    }
-
-    private static void fillPolygonGui(GuiGraphics graphics, int[] xs, int[] ys, int n, int color) {
-        if (n < 3) return;
-        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
-        for (int i = 0; i < n; i++) { minY = Math.min(minY, ys[i]); maxY = Math.max(maxY, ys[i]); }
-        for (int y = minY; y <= maxY; y++) {
-            java.util.List<Integer> xi = new java.util.ArrayList<>();
-            for (int i = 0; i < n; i++) {
-                int j = (i + 1) % n;
-                int y0 = ys[i], y1 = ys[j];
-                if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y)) {
-                    xi.add(xs[i] + (y - y0) * (xs[j] - xs[i]) / (y1 - y0));
-                }
-            }
-            java.util.Collections.sort(xi);
-            for (int k = 0; k + 1 < xi.size(); k += 2) {
-                if (xi.get(k + 1) > xi.get(k)) {
-                    graphics.fill(xi.get(k), y, xi.get(k + 1) + 1, y + 1, color);
-                }
-            }
         }
     }
 

@@ -3,7 +3,7 @@ package net.zoogle.enchiridion.client.ui;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalTemplateEditor;
+import net.zoogle.enchiridion.client.levelrpg.journal.editor.LevelRpgJournalTemplateEditor;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
 /**

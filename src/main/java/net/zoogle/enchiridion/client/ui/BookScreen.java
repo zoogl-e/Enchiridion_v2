@@ -12,12 +12,12 @@ import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookFrontCoverCardState;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.client.audio.PostBindAmbientScheduler;
-import net.zoogle.enchiridion.client.levelrpg.ArchetypeReelState;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgArchetypeBindGateway;
-import net.zoogle.enchiridion.client.levelrpg.JournalArchetypeChoice;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalInteractionBridge;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgIntroFlowAdapter;
-import net.zoogle.enchiridion.client.levelrpg.ReelFlowController;
+import net.zoogle.enchiridion.client.levelrpg.bridge.LevelRpgJournalInteractionBridge;
+import net.zoogle.enchiridion.client.levelrpg.archetype.ArchetypeReelState;
+import net.zoogle.enchiridion.client.levelrpg.archetype.JournalArchetypeChoice;
+import net.zoogle.enchiridion.client.levelrpg.archetype.LevelRpgIntroFlowAdapter;
+import net.zoogle.enchiridion.client.levelrpg.archetype.ReelFlowController;
+import net.zoogle.enchiridion.client.levelrpg.projection.SkillTreeProjectionData;
 
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 import org.lwjgl.glfw.GLFW;
@@ -32,17 +32,13 @@ public final class BookScreen extends Screen {
     private final BookOverlayRenderer overlayRenderer = new BookOverlayRenderer();
     private final InfoPanelLayoutService infoPanelLayoutService = new InfoPanelLayoutService();
     private final BookEditorCoordinator editorCoordinator = new BookEditorCoordinator();
-    private final ArchetypeReelState archetypeReelState = new ArchetypeReelState();
-    private final ReelFlowController reelFlowController = new ReelFlowController();
-    private final LevelRpgArchetypeBindGateway archetypeBindGateway = new LevelRpgArchetypeBindGateway();
     private final BookCinematicManager cinematicManager = new BookCinematicManager();
     private final SkillTreeProjectionController projectionController = new SkillTreeProjectionController();
-    
+    private final ArchetypeReelCoordinator archetypeCoordinator = new ArchetypeReelCoordinator();
     
     private Component overlayTitle;
-    private ReelFlowController.FlowPhase previousReelPhase = ReelFlowController.FlowPhase.INACTIVE;
     private boolean shouldRenderArchetypeReel() {
-        return modeCoordinator.shouldHandleReelInput(archetypeReelState) && reelFlowController.shouldRenderReel();
+        return modeCoordinator.shouldHandleReelInput(archetypeCoordinator.reelState()) && archetypeCoordinator.shouldRender();
     }
     public BookScreen(BookDefinition definition) {
         this(definition, createContext(definition));
@@ -72,23 +68,8 @@ public final class BookScreen extends Screen {
         cinematicManager.tick();
         controller.tick();
         projectionController.tick(controller, viewState, width, height);
-        reelFlowController.tick(
-                archetypeReelState,
-                controller.frontCoverCardState().boundArchetypeId(),
-                controller.context(),
-                archetypeBindGateway
-        );
-        ReelFlowController.FlowPhase currentPhase = reelFlowController.phase();
-        if (currentPhase != previousReelPhase) {
-            cinematicManager.onReelPhaseChanged(previousReelPhase, currentPhase, width, height);
-            previousReelPhase = currentPhase;
-        }
-        if (reelFlowController.phase() == ReelFlowController.FlowPhase.COMPLETED) {
-            archetypeReelState.close();
-            reelFlowController.onClosed();
-            controller.reloadSpread();
-            viewState.refreshDisplayedSpread(controller);
-        }
+        archetypeCoordinator.tick(controller, viewState, cinematicManager, width, height);
+
         overlayTitle = controller.definition().provider().displayTitle(controller.context(), controller.definition().title());
         viewState.updateTextTransition(controller);
         viewState.updateProjectionFocusOffset(controller);
@@ -122,22 +103,22 @@ public final class BookScreen extends Screen {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         preparePresentation(mouseX, mouseY);
         if (shouldRenderArchetypeReel()) {
-            if (archetypeReelState.dragging()) {
-                archetypeReelState.setDragMouse(mouseX, mouseY);
+            if (archetypeCoordinator.reelState().dragging()) {
+                archetypeCoordinator.reelState().setDragMouse(mouseX, mouseY);
             }
-            BookSceneRenderer.ScreenRect focusedCardRect = sceneRenderer.focusedArchetypeReelCardRect(viewState.layout(), archetypeReelState);
+            BookSceneRenderer.ScreenRect focusedCardRect = sceneRenderer.focusedArchetypeReelCardRect(viewState.layout(), archetypeCoordinator.reelState());
             float tiltAnchorX = focusedCardRect == null ? (width / 2.0f) : focusedCardRect.x() + (focusedCardRect.width() / 2.0f);
             float tiltAnchorY = focusedCardRect == null ? (height / 2.0f) : focusedCardRect.y() + (focusedCardRect.height() / 2.0f);
-            archetypeReelState.updateFocusTilt(tiltAnchorX, tiltAnchorY, mouseX, mouseY);
-            updateArchetypeReelHover(mouseX, mouseY);
+            archetypeCoordinator.reelState().updateFocusTilt(tiltAnchorX, tiltAnchorY, mouseX, mouseY);
+            archetypeCoordinator.updateHover(mouseX, mouseY, viewState, sceneRenderer);
         }
         if (projectionController.isActive()) {
             projectionController.updateHover(viewState, sceneRenderer, mouseX, mouseY);
         }
         BookInteractionResolver.Resolution interaction = resolveInteraction(mouseX, mouseY);
         renderBook(graphics, interaction, mouseX, mouseY, partialTick);
-        if (shouldRenderArchetypeReel() && archetypeReelState.dragging()) {
-            renderArchetypeDropTargetHint(graphics);
+        if (shouldRenderArchetypeReel() && archetypeCoordinator.reelState().dragging()) {
+            archetypeCoordinator.renderDropTargetHint(graphics, archetypeDropTargetRect());
         }
         cinematicManager.renderPulse(graphics, archetypeDropTargetRect());
         if (projectionController.isActive()) {
@@ -145,6 +126,9 @@ public final class BookScreen extends Screen {
         }
         cinematicManager.renderBolt(graphics, width, height, archetypeDropTargetRect());
         super.render(graphics, mouseX, mouseY, partialTick);
+        if (shouldRenderArchetypeReel()) {
+            archetypeCoordinator.renderTopmost(graphics, font, viewState, staticArchetypeReelPanelRect());
+        }
         overlayRenderer.renderTopmostOverlay(
                 graphics,
                 font,
@@ -172,7 +156,7 @@ public final class BookScreen extends Screen {
             return true;
         }
         if (shouldRenderArchetypeReel()) {
-            return handleArchetypeReelKey(keyCode) || super.keyPressed(keyCode, scanCode, modifiers);
+            return archetypeCoordinator.keyPressed(keyCode) || super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (projectionController.keyPressed(keyCode)) {
             return true;
@@ -207,7 +191,7 @@ public final class BookScreen extends Screen {
             return true;
         }
         if (shouldRenderArchetypeReel()) {
-            return handleArchetypeReelClick(mouseX, mouseY, button);
+            return archetypeCoordinator.mouseClicked(mouseX, mouseY, button, viewState, sceneRenderer);
         }
         if (projectionController.mouseClicked(mouseX, mouseY, button, width, height, viewState, sceneRenderer, controller.context())) {
             return true;
@@ -223,9 +207,9 @@ public final class BookScreen extends Screen {
             return true;
         }
         if (shouldRenderArchetypeReel()
-                && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
-                && handleArchetypeReelDrag(mouseX, mouseY)) {
-            return true;
+                && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            boolean hoveredOverTarget = isPointInScreenRect(mouseX, mouseY, archetypeDropTargetRect());
+            return archetypeCoordinator.mouseDragged(mouseX, mouseY, hoveredOverTarget);
         }
         if (projectionController.mouseDragged(mouseX, mouseY, button, dragX, dragY, width, height, viewState)) {
             return true;
@@ -246,11 +230,11 @@ public final class BookScreen extends Screen {
             return true;
         }
         if (shouldRenderArchetypeReel()
-                && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
-                && handleArchetypeReelRelease(mouseX, mouseY)) {
-            return true;
+                && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            boolean droppedOnTarget = isPointInScreenRect(mouseX, mouseY, archetypeDropTargetRect());
+            return archetypeCoordinator.mouseReleased(mouseX, mouseY, droppedOnTarget);
         }
-        projectionController.mouseReleased(button);
+        archetypeCoordinator.reelState().endDrag();
         return inputController.mouseReleased(viewState, button)
                 || super.mouseReleased(mouseX, mouseY, button);
     }
@@ -268,11 +252,7 @@ public final class BookScreen extends Screen {
         controller.closeProjection();
         List<JournalArchetypeChoice> choices = LevelRpgJournalInteractionBridge.availableArchetypes();
         BookFrontCoverCardState cardState = controller.frontCoverCardState();
-        boolean opened = archetypeReelState.open(choices, cardState.boundArchetypeId(), cardState.selectedArchetypeId());
-        if (opened) {
-            reelFlowController.onOpened();
-        }
-        return opened;
+        return archetypeCoordinator.open(choices, cardState.boundArchetypeId(), cardState.selectedArchetypeId());
     }
     public boolean closeProjection() {
         return controller.closeProjection();
@@ -282,20 +262,12 @@ public final class BookScreen extends Screen {
             return false;
         }
         projectionController.close();
-        archetypeReelState.close();
-        reelFlowController.onClosed();
+        archetypeCoordinator.close();
         controller.closeProjection();
         return projectionController.open(skillName, LevelRpgJournalInteractionBridge.availableJournalSkillNames());
     }
     public boolean beginArchetypeBinding(String focusId) {
-        boolean begun = controller.beginArchetypeBinding(focusId);
-        if (begun) {
-            archetypeReelState.close();
-            reelFlowController.onClosed();
-            controller.reloadSpread();
-            viewState.refreshDisplayedSpread(controller);
-        }
-        return begun;
+        return archetypeCoordinator.beginBinding(controller, focusId, viewState);
     }
     private void preparePresentation(int mouseX, int mouseY) {
         viewState.setClosedBookHovered(controller.isClosed() && sceneRenderer.isClosedBookHovered(viewState.layout(), mouseX, mouseY));
@@ -331,11 +303,11 @@ public final class BookScreen extends Screen {
                 mouseY,
                 BookDebugSettings.pageLocalInteractionDebug()
         );
-        if (modeCoordinator.shouldResolvePageInteraction(controller, archetypeReelState, projectionController.isActive())) {
+        if (modeCoordinator.shouldResolvePageInteraction(controller, archetypeCoordinator.reelState(), projectionController.isActive())) {
             viewState.setInteraction(interaction);
             return interaction;
         }
-        if (modeCoordinator.shouldHandleReelInput(archetypeReelState)) {
+        if (modeCoordinator.shouldHandleReelInput(archetypeCoordinator.reelState())) {
             interaction = BookInteractionResolver.Resolution.empty();
         }
         viewState.setInteraction(interaction);
@@ -375,18 +347,14 @@ public final class BookScreen extends Screen {
         return new BookFrontCoverCardState(
                 base.visible(),
                 base.clickable(),
-                archetypeReelState.hoveredArchetypeId(),
-                archetypeReelState.focusedArchetypeId(),
+                archetypeCoordinator.reelState().hoveredArchetypeId(),
+                archetypeCoordinator.reelState().focusedArchetypeId(),
                 base.boundArchetypeId()
         );
     }
-    private void updateArchetypeReelHover(int mouseX, int mouseY) {
-        Integer hoveredIndex = sceneRenderer.hoveredArchetypeReelCardIndex(viewState.layout(), archetypeReelState, mouseX, mouseY);
-        archetypeReelState.setHoveredIndex(hoveredIndex == null ? -1 : hoveredIndex);
-    }
     private net.zoogle.enchiridion.client.anim.BookAnimState effectiveVisualState() {
         if (shouldRenderArchetypeReel()) {
-            return archetypeReelState.dragFrontBlend() >= 0.5f
+            return archetypeCoordinator.reelState().dragFrontBlend() >= 0.5f
                     ? net.zoogle.enchiridion.client.anim.BookAnimState.IDLE_FRONT
                     : net.zoogle.enchiridion.client.anim.BookAnimState.IDLE_FRONT_SKILLTREE;
         }
@@ -402,175 +370,8 @@ public final class BookScreen extends Screen {
         projectionController.close();
         return true;
     }
-    private boolean handleArchetypeReelKey(int keyCode) {
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-            if (canCancelArchetypeReel()) {
-                archetypeReelState.close();
-                reelFlowController.onClosed();
-                return true;
-            }
-            return false;
-        }
-        if (keyCode == GLFW.GLFW_KEY_LEFT || keyCode == GLFW.GLFW_KEY_A) {
-            archetypeReelState.move(-1);
-            return true;
-        }
-        if (keyCode == GLFW.GLFW_KEY_RIGHT || keyCode == GLFW.GLFW_KEY_D) {
-            archetypeReelState.move(1);
-            return true;
-        }
-        return false;
-    }
-    private boolean handleArchetypeReelClick(double mouseX, double mouseY, int button) {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            if (canCancelArchetypeReel()) {
-                archetypeReelState.endDrag();
-                archetypeReelState.close();
-                reelFlowController.onClosed();
-                return true;
-            }
-            return false;
-        }
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            return false;
-        }
-        Integer hoveredIndex = sceneRenderer.hoveredArchetypeReelCardIndex(viewState.layout(), archetypeReelState, mouseX, mouseY);
-        int dragIndex = hoveredIndex == null ? archetypeReelState.focusedIndex() : hoveredIndex;
-        boolean started = archetypeReelState.beginDrag(dragIndex);
-        if (started) {
-            archetypeReelState.setDragMouse((float) mouseX, (float) mouseY);
-        }
-        return started;
-    }
-    private boolean handleArchetypeReelDrag(double mouseX, double mouseY) {
-        if (!archetypeReelState.dragging()) {
-            return false;
-        }
-        archetypeReelState.setDragMouse((float) mouseX, (float) mouseY);
-        BookSceneRenderer.ScreenRect slot = archetypeDropTargetRect();
-        boolean hovered = isPointInScreenRect(mouseX, mouseY, slot);
-        archetypeReelState.setDropTargetHovered(hovered);
-        return true;
-    }
-    private boolean handleArchetypeReelRelease(double mouseX, double mouseY) {
-        if (!archetypeReelState.dragging()) {
-            return false;
-        }
-        JournalArchetypeChoice droppedChoice = archetypeReelState.draggedChoice();
-        BookSceneRenderer.ScreenRect slot = archetypeDropTargetRect();
-        boolean droppedOnSlot = isPointInScreenRect(mouseX, mouseY, slot);
-        archetypeReelState.endDrag();
-        if (!droppedOnSlot) {
-            return true;
-        }
-        if (droppedChoice != null) {
-            return reelFlowController.confirmChoice(archetypeReelState, droppedChoice);
-        }
-        archetypeReelState.snapToNearestFocus();
-        return confirmArchetypeReelFocus();
-    }
-    private boolean confirmArchetypeReelFocus() {
-        if (archetypeReelState.phase() != ArchetypeReelState.Phase.IDLE) {
-            return false;
-        }
-        archetypeReelState.endDrag();
-        JournalArchetypeChoice focusedChoice = archetypeReelState.focusedChoice();
-        if (focusedChoice == null) {
-            return false;
-        }
-        return reelFlowController.confirmFocused(archetypeReelState);
-    }
-    private boolean canCancelArchetypeReel() {
-        return reelFlowController.canCancel();
-    }
-    private void renderArchetypeReelInfoPanel(GuiGraphics graphics) {
-        JournalArchetypeChoice focusedChoice = archetypeReelState.focusedChoice();
-        if (focusedChoice == null || viewState.layout() == null) {
-            return;
-        }
-        InfoPanelLayoutService.PanelRect panelRect = staticArchetypeReelPanelRect();
-        if (!panelRect.visible()) {
-            return;
-        }
-        float alpha = archetypeReelState.globalPresentationAlpha();
-        int px = panelRect.x();
-        int py = panelRect.y();
-        int pw = panelRect.width();
-        int ph = panelRect.height();
-        // Background layers
-        graphics.fill(px, py, px + pw, py + ph, scaleColorAlpha(0xB819120D, alpha));
-        graphics.fill(px + 2, py + 2, px + pw - 2, py + ph - 2, scaleColorAlpha(0xDCCBAF86, alpha));
-        graphics.renderOutline(px, py, pw, ph, scaleColorAlpha(0xFF6D4A2C, alpha));
-        graphics.renderOutline(px + 4, py + 4, pw - 8, ph - 8, scaleColorAlpha(0x446D4A2C, alpha));
-        // Nav hint strip separator
-        int hintStripTop = py + ph - 20;
-        graphics.fill(px + 4, hintStripTop, px + pw - 4, hintStripTop + 1, scaleColorAlpha(0x446D4A2C, alpha));
-        int pad = 12;
-        int textX = px + pad;
-        int textW = pw - pad * 2;
-        int contentBottom = hintStripTop - 4;
-        int y = py + pad;
-        // Title — centered
-        String title = focusedChoice.title();
-        int titleX = px + (pw / 2) - (font.width(title) / 2);
-        graphics.drawString(font, title, titleX, y, scaleColorAlpha(0xFF2A180F, alpha), false);
-        y += 12;
-        // Decorative rule under title
-        graphics.fill(px + 16, y, px + pw - 16, y + 1, scaleColorAlpha(0x886D4A2C, alpha));
-        y += 6;
-        // Phase label — only during binding states
-        String phaseLabel = switch (reelFlowController.phase()) {
-            case REQUESTING_BIND -> "Inscribing\u2026";
-            case AWAITING_SYNC -> "Awaiting Seal";
-            case FAILED -> "Binding Failed";
-            default -> null;
-        };
-        if (phaseLabel != null) {
-            int labelX = px + (pw / 2) - (font.width(phaseLabel) / 2);
-            graphics.drawString(font, phaseLabel, labelX, y, scaleColorAlpha(0xFFB07030, alpha), false);
-            y += 13;
-        }
-        // Description
-        y = drawWrappedLines(
-                graphics,
-                focusedChoice.description().isBlank() ? "No inscription accompanies this archetype yet." : focusedChoice.description(),
-                textX, y, textW, contentBottom - 22,
-                scaleColorAlpha(0xFF3B271A, alpha)
-        );
-        // Disciplines section — only if space remains
-        if (y + 22 <= contentBottom && !focusedChoice.startingDisciplines().isBlank()) {
-            y += 6;
-            graphics.drawString(font, "Disciplines", textX, y, scaleColorAlpha(0xFF8B6444, alpha), false);
-            y += 12;
-            drawWrappedLines(graphics, focusedChoice.startingDisciplines(), textX, y, textW, contentBottom, scaleColorAlpha(0xFF3B271A, alpha));
-        }
-        // Nav hints inside the panel's bottom strip
-        if (reelFlowController.phase() == ReelFlowController.FlowPhase.SELECTING) {
-            int hintY = hintStripTop + 6;
-            int hintColor = scaleColorAlpha(0xFF6F513C, alpha);
-            int centerX = px + pw / 2;
-            String leftHint = "\u00AB A";
-            String rightHint = "D \u00BB";
-            graphics.drawString(font, leftHint, centerX - font.width(leftHint) - 8, hintY, hintColor, false);
-            graphics.drawString(font, rightHint, centerX + 8, hintY, hintColor, false);
-            String dragHint = "Drag to rotate \u2022 release to settle";
-            int dragHintX = centerX - (font.width(dragHint) / 2);
-            graphics.drawString(font, dragHint, dragHintX, hintY - 11, hintColor, false);
-        }
-    }
-    private void renderArchetypeDropTargetHint(GuiGraphics graphics) {
-        BookSceneRenderer.ScreenRect slot = archetypeDropTargetRect();
-        if (slot == null) {
-            return;
-        }
-        int left = Math.round(slot.x());
-        int top = Math.round(slot.y());
-        int width = Math.max(1, Math.round(slot.width()));
-        int height = Math.max(1, Math.round(slot.height()));
-        int tint = archetypeReelState.dropTargetHovered() ? 0x4AA3E66A : 0x304A2D17;
-        int border = archetypeReelState.dropTargetHovered() ? 0xFFD3F2A9 : 0xFFC18A62;
-        graphics.fill(left, top, left + width, top + height, tint);
-        graphics.renderOutline(left, top, width, height, border);
+    private InfoPanelLayoutService.PanelRect staticArchetypeReelPanelRect() {
+        return infoPanelLayoutService.resolveStaticReelArchetypePanelRect(width, height);
     }
     private BookSceneRenderer.ScreenRect archetypeDropTargetRect() {
         if (viewState.layout() == null) {
@@ -594,46 +395,7 @@ public final class BookScreen extends Screen {
                 && mouseY >= rect.y()
                 && mouseY <= rect.y() + rect.height();
     }
-    private InfoPanelLayoutService.PanelRect staticArchetypeReelPanelRect() {
-        return infoPanelLayoutService.resolveStaticReelArchetypePanelRect(width, height);
-    }
-    private void renderArchetypeReelInfoPanelTopmost(GuiGraphics graphics) {
-        if (!shouldRenderArchetypeReel()) {
-            return;
-        }
-        if (archetypeReelState.dragging()) {
-            return;
-        }
-        graphics.flush();
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(false);
-        graphics.pose().pushPose();
-        graphics.pose().translate(0.0F, 0.0F, 640.0F);
-        try {
-            renderArchetypeReelInfoPanel(graphics);
-        } finally {
-            graphics.flush();
-            graphics.pose().popPose();
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-        }
-    }
-    private int drawWrappedLines(GuiGraphics graphics, String text, int x, int y, int width, int maxY, int color) {
-        List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(text), width);
-        for (net.minecraft.util.FormattedCharSequence line : lines) {
-            if (y > maxY) {
-                break;
-            }
-            graphics.drawString(font, line, x, y, color, false);
-            y += 11;
-        }
-        return y;
-    }
     private ArchetypeReelState reelStateForPresentation() {
-        return shouldRenderArchetypeReel() ? archetypeReelState : null;
-    }
-    private static int scaleColorAlpha(int argb, float alpha) {
-        int a = Math.min(255, Math.max(0, Math.round(((argb >>> 24) & 0xFF) * alpha)));
-        return (a << 24) | (argb & 0xFFFFFF);
+        return archetypeCoordinator.reelStateForPresentation();
     }
 }

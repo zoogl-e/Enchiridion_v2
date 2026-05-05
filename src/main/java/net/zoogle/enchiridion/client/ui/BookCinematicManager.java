@@ -8,7 +8,7 @@ import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.zoogle.enchiridion.client.audio.PostBindAmbientScheduler;
-import net.zoogle.enchiridion.client.levelrpg.ReelFlowController;
+import net.zoogle.enchiridion.client.levelrpg.archetype.ReelFlowController;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
 import java.util.function.Supplier;

@@ -1,6 +1,6 @@
 package net.zoogle.enchiridion.client.ui;
 
-import net.zoogle.enchiridion.client.levelrpg.JournalPageStyleSystem;
+import net.zoogle.enchiridion.client.levelrpg.journal.style.JournalPageStyleSystem;
 
 public final class BookDebugSettings {
     private static boolean templateRegionsDebug = false;

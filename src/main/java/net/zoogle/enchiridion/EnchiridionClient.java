@@ -8,7 +8,7 @@ import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookPageProvider;
 import net.zoogle.enchiridion.api.EnchiridionClientApi;
 import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalBookRegistration;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgProfileSyncHook;
+import net.zoogle.enchiridion.client.levelrpg.bridge.LevelRpgProfileSyncHook;
 import net.zoogle.enchiridion.client.registry.BookRegistry;
 import net.zoogle.enchiridion.client.ui.BookScreen;
 

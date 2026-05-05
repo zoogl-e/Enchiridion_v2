@@ -3,7 +3,7 @@ package net.zoogle.enchiridion.client.render;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
-import net.zoogle.enchiridion.client.levelrpg.SkillTreeProjectionData;
+import net.zoogle.enchiridion.client.levelrpg.projection.SkillTreeProjectionData;
 import net.zoogle.enchiridion.client.ui.BookLayout;
 
 import java.util.ArrayList;

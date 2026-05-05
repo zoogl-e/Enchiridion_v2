@@ -6,10 +6,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
-import net.zoogle.enchiridion.client.levelrpg.JournalSkillEntry;
-import net.zoogle.enchiridion.client.levelrpg.LevelRpgJournalInteractionBridge;
-import net.zoogle.enchiridion.client.levelrpg.SkillTreeProjectionData;
-import net.zoogle.enchiridion.client.levelrpg.SkillTreeProjectionState;
+import net.zoogle.enchiridion.client.levelrpg.model.JournalSkillEntry;
+import net.zoogle.enchiridion.client.levelrpg.bridge.LevelRpgJournalInteractionBridge;
+import net.zoogle.enchiridion.client.levelrpg.projection.SkillTreeProjectionData;
+import net.zoogle.enchiridion.client.levelrpg.projection.SkillTreeProjectionState;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 import org.lwjgl.glfw.GLFW;
 

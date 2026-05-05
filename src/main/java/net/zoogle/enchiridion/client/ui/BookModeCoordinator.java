@@ -1,6 +1,6 @@
 package net.zoogle.enchiridion.client.ui;
 
-import net.zoogle.enchiridion.client.levelrpg.ArchetypeReelState;
+import net.zoogle.enchiridion.client.levelrpg.archetype.ArchetypeReelState;
 
 final class BookModeCoordinator {
     boolean isReelActive(ArchetypeReelState reelState) {
