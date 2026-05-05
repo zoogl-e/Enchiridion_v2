@@ -84,7 +84,8 @@ final class LevelRpgJournalSnapshotBridge {
             float nextRing = JournalLayoutMetrics.radarLevelDisplayNorm(masteryLevel + 1);
             stats.add(new JournalCharacterStat(
                     name,
-                    statValue,
+                    investedLevel,
+                    masteryLevel,
                     masteryLevelNorm,
                     nextRing,
                     false,
@@ -194,15 +195,8 @@ final class LevelRpgJournalSnapshotBridge {
             return "No specialization path is inscribed for this discipline.";
         }
         StringBuilder builder = new StringBuilder();
-        builder.append("Practice opens ")
-                .append(intValue(call(mastery, "unlockedTierCount")))
-                .append(" tier");
-        if (intValue(call(mastery, "unlockedTierCount")) != 1) {
-            builder.append('s');
-        }
-        builder.append('.');
-        builder.append("\nSpecialization: ")
-                .append(intValue(call(mastery, "availablePoints")))
+        builder.append("Specialization: ")
+                .append(intValue(call(mastery, "insight")))
                 .append(" ready | ")
                 .append(intValue(call(mastery, "spentPoints")))
                 .append(" spent | ")
@@ -229,9 +223,9 @@ final class LevelRpgJournalSnapshotBridge {
             return "A Skill Point is ready. Open this discipline to decide whether to deepen your investment.";
         }
         if (mastery != null) {
-            int availablePoints = intValue(call(mastery, "availablePoints"));
+            int insight = intValue(call(mastery, "insight"));
             String suggestedNextNodeId = stringValue(call(mastery, "suggestedNextNodeId"));
-            if (availablePoints > 0 && !suggestedNextNodeId.isBlank()) {
+            if (insight > 0 && !suggestedNextNodeId.isBlank()) {
                 return "A specialization point can be committed now. The nearest open path is "
                         + LevelRpgJournalSnapshotFactory.humanizePath(suggestedNextNodeId) + ".";
             }

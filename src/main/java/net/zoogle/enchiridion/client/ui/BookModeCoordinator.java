@@ -7,12 +7,20 @@ final class BookModeCoordinator {
         return reelState != null && reelState.active();
     }
 
-    boolean shouldResolvePageInteraction(BookScreenController controller, ArchetypeReelState reelState) {
-        return !isReelActive(reelState) && !controller.isProjectionVisible();
+    boolean isSkillTreeProjectionActive(boolean skillTreeProjectionActive) {
+        return skillTreeProjectionActive;
+    }
+
+    boolean shouldResolvePageInteraction(BookScreenController controller, ArchetypeReelState reelState, boolean skillTreeProjectionActive) {
+        return !isReelActive(reelState) && !controller.isProjectionVisible() && !isSkillTreeProjectionActive(skillTreeProjectionActive);
     }
 
     boolean shouldHandleReelInput(ArchetypeReelState reelState) {
         return isReelActive(reelState);
+    }
+
+    boolean shouldHandleSkillTreeProjectionInput(boolean skillTreeProjectionActive) {
+        return isSkillTreeProjectionActive(skillTreeProjectionActive);
     }
 
     boolean canHandleProjectionInput(BookScreenController controller, ArchetypeReelState reelState) {
@@ -23,11 +31,11 @@ final class BookModeCoordinator {
         return controller.isProjectionVisible();
     }
 
-    boolean canHandleJournalInput(BookScreenController controller, ArchetypeReelState reelState) {
-        return !isReelActive(reelState) && controller.isJournalReadable();
+    boolean canHandleJournalInput(BookScreenController controller, ArchetypeReelState reelState, boolean skillTreeProjectionActive) {
+        return !isReelActive(reelState) && !isSkillTreeProjectionActive(skillTreeProjectionActive) && controller.isJournalReadable();
     }
 
     boolean canHandleJournalInput(BookScreenController controller) {
-        return controller.isJournalReadable();
+        return canHandleJournalInput(controller, null, false);
     }
 }

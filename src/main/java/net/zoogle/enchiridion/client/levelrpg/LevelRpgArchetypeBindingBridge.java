@@ -94,6 +94,24 @@ final class LevelRpgArchetypeBindingBridge {
         }
     }
 
+    static ArchetypeBindFeedback latestBindFeedback() {
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method versionMethod = cacheClass.getMethod("getBindResultVersion");
+            Method successMethod = cacheClass.getMethod("wasLastBindSuccess");
+            Method messageMethod = cacheClass.getMethod("getLastBindMessage");
+            Method idMethod = cacheClass.getMethod("getLastBindArchetypeId");
+            long version = ((Number) versionMethod.invoke(null)).longValue();
+            boolean success = Boolean.TRUE.equals(successMethod.invoke(null));
+            String message = String.valueOf(messageMethod.invoke(null));
+            Object idValue = idMethod.invoke(null);
+            ResourceLocation archetypeId = idValue instanceof ResourceLocation id ? id : null;
+            return new ArchetypeBindFeedback(version, success, message, archetypeId);
+        } catch (ReflectiveOperationException | ClassCastException exception) {
+            return null;
+        }
+    }
+
     private static Map<String, Integer> startingLevels(Object definition) throws ReflectiveOperationException {
         Object raw = definition.getClass().getMethod("startingLevels").invoke(definition);
         if (!(raw instanceof Map<?, ?> map) || map.isEmpty()) {

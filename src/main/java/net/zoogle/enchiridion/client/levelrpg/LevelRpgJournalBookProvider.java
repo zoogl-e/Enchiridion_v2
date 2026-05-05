@@ -178,9 +178,7 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
             return null;
         }
         String focusId = focusIdForCardState(cardState);
-        Component hoverText = cardState.boundArchetypeId() != null
-                ? Component.literal("Your archetype is inscribed into this journal.")
-                : Component.literal("Seat an archetype card in the waiting recess.");
+        Component hoverText = frontCoverTooltipText(cardState);
         return BookTrackedRegion.of(
                 BookTrackedRegion.Anchor.FRONT_COVER_CARD,
                 hoverText,
@@ -210,20 +208,33 @@ public final class LevelRpgJournalBookProvider implements BookPageProvider, Book
     }
 
     private static ResourceLocation selectedArchetypeId(BookContext context) {
-        JournalArchetypeChoice selectedChoice = INTRO_FLOW.selectedChoice();
-        if (selectedChoice != null) {
-            try {
-                return ResourceLocation.parse(selectedChoice.focusId());
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
         return INTRO_FLOW.selectedArchetypeId(context);
     }
 
     private static String focusIdForCardState(BookFrontCoverCardState cardState) {
         ResourceLocation displayId = cardState.displayedArchetypeId();
         return displayId == null ? null : displayId.toString();
+    }
+
+    private static Component frontCoverTooltipText(BookFrontCoverCardState cardState) {
+        ResourceLocation displayedArchetypeId = cardState.displayedArchetypeId();
+        if (displayedArchetypeId == null) {
+            return Component.literal("Seat an archetype card in the waiting recess.");
+        }
+        String title = archetypeTitle(displayedArchetypeId);
+        if (cardState.boundArchetypeId() != null) {
+            return Component.literal("Inscribed archetype: " + title);
+        }
+        return Component.literal("Selected archetype: " + title);
+    }
+
+    private static String archetypeTitle(ResourceLocation archetypeId) {
+        for (JournalArchetypeChoice choice : LevelRpgArchetypeBindingBridge.availableArchetypes()) {
+            if (archetypeId.equals(choice.archetypeId())) {
+                return choice.title();
+            }
+        }
+        return archetypeId.toString();
     }
 
     private static String adjacentProjectionFocus(List<String> focusOrder, String currentFocusId, int direction) {

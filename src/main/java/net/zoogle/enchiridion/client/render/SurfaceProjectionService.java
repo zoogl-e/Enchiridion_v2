@@ -22,7 +22,9 @@ final class SurfaceProjectionService {
                 card.index(),
                 new BookSceneRenderer.ScreenQuad(topLeft.screenPoint(), topRight.screenPoint(), bottomRight.screenPoint(), bottomLeft.screenPoint()),
                 (topLeft.depth() + topRight.depth() + bottomRight.depth() + bottomLeft.depth()) / 4.0f,
-                card.focused()
+                card.focused(),
+                card.detached(),
+                card.renderLayer()
         );
     }
 

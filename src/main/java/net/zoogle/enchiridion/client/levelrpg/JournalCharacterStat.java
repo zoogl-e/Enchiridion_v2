@@ -5,6 +5,7 @@ import java.util.Objects;
 public record JournalCharacterStat(
         String name,
         int value,
+        int masteryValue,
         /** 0–1: display-normalized mastery level radius (log scale, stroke-only ring). */
         float masteryLevelNorm,
         /**

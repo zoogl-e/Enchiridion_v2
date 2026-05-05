@@ -9,7 +9,6 @@ public final class ReelFlowController {
     public enum FlowPhase {
         INACTIVE,
         SELECTING,
-        COMMITTING,
         REQUESTING_BIND,
         AWAITING_SYNC,
         COMPLETED,
@@ -19,6 +18,7 @@ public final class ReelFlowController {
     private FlowPhase phase = FlowPhase.INACTIVE;
     private int awaitingSyncTicks;
     private String selectedFocusId;
+    private long lastFeedbackVersionSeen;
 
     public void onOpened() {
         phase = FlowPhase.SELECTING;
@@ -39,14 +39,28 @@ public final class ReelFlowController {
         return phase == FlowPhase.SELECTING || phase == FlowPhase.FAILED;
     }
 
+    public boolean shouldRenderReel() {
+        return phase == FlowPhase.SELECTING || phase == FlowPhase.FAILED;
+    }
+
     public boolean confirmFocused(ArchetypeReelState reelState) {
         JournalArchetypeChoice focusedChoice = reelState.focusedChoice();
         if (focusedChoice == null) {
             return false;
         }
         selectedFocusId = focusedChoice.focusId();
-        reelState.beginConfirming();
-        phase = FlowPhase.COMMITTING;
+        reelState.queueBindRequestFromFocused();
+        phase = FlowPhase.REQUESTING_BIND;
+        return true;
+    }
+
+    public boolean confirmChoice(ArchetypeReelState reelState, JournalArchetypeChoice choice) {
+        if (choice == null || choice.focusId() == null || choice.focusId().isBlank()) {
+            return false;
+        }
+        selectedFocusId = choice.focusId();
+        reelState.queueBindRequestForChoice(choice);
+        phase = FlowPhase.REQUESTING_BIND;
         return true;
     }
 
@@ -71,7 +85,7 @@ public final class ReelFlowController {
             return;
         }
 
-        if ((phase == FlowPhase.COMMITTING || phase == FlowPhase.REQUESTING_BIND) && reelState.readyToRequestBind()) {
+        if (phase == FlowPhase.REQUESTING_BIND && reelState.readyToRequestBind()) {
             phase = FlowPhase.REQUESTING_BIND;
             if (selectedFocusId == null || selectedFocusId.isBlank()) {
                 phase = FlowPhase.FAILED;
@@ -82,6 +96,10 @@ public final class ReelFlowController {
                 reelState.markBindingRequestIssued();
                 phase = FlowPhase.AWAITING_SYNC;
                 awaitingSyncTicks = 0;
+                ArchetypeBindFeedback feedback = bindGateway.latestFeedback();
+                if (feedback != null) {
+                    lastFeedbackVersionSeen = feedback.version();
+                }
             } else {
                 phase = FlowPhase.FAILED;
                 reelState.abortToSelectable();
@@ -90,6 +108,19 @@ public final class ReelFlowController {
         }
 
         if (phase == FlowPhase.AWAITING_SYNC) {
+            ArchetypeBindFeedback feedback = bindGateway.latestFeedback();
+            if (feedback != null && feedback.version() > lastFeedbackVersionSeen) {
+                lastFeedbackVersionSeen = feedback.version();
+                if (feedback.archetypeId() == null || selectedFocusId == null || selectedFocusId.equals(feedback.archetypeId().toString())) {
+                    if (feedback.success()) {
+                        phase = FlowPhase.COMPLETED;
+                        return;
+                    }
+                    phase = FlowPhase.FAILED;
+                    reelState.abortToSelectable();
+                    return;
+                }
+            }
             awaitingSyncTicks++;
             if (awaitingSyncTicks >= SYNC_TIMEOUT_TICKS) {
                 phase = FlowPhase.FAILED;

@@ -109,7 +109,15 @@ public final class BookScreenController implements BookProjectionController.Proj
     }
 
     public boolean beginClosing() {
-        return animController.requestClose();
+        if (animController.getState() == BookAnimState.IDLE_OPEN) {
+            if (definition.provider().isFrontSpread(context, animController.getCurrentSpread())) {
+                return animController.requestClose(BookAnimState.CLOSING_FRONT);
+            }
+            if (definition.provider().isBackSpread(context, animController.getCurrentSpread())) {
+                return animController.requestClose(BookAnimState.CLOSING_BACK);
+            }
+        }
+        return animController.requestClose(BookAnimState.CLOSING);
     }
 
     public boolean beginOpening() {
@@ -118,9 +126,15 @@ public final class BookScreenController implements BookProjectionController.Proj
             animController.setCurrentSpread(initialSpreadIndex);
             reloadSpread();
         }
+        BookAnimState openingState = BookAnimState.OPENING;
+        if (definition.provider().isFrontSpread(context, animController.getCurrentSpread())) {
+            openingState = BookAnimState.OPENING_FRONT;
+        } else if (definition.provider().isBackSpread(context, animController.getCurrentSpread())) {
+            openingState = BookAnimState.OPENING_BACK;
+        }
         exitWhenClosed = false;
         resetSpreadOnNextOpen = false;
-        return animController.requestOpen();
+        return animController.requestOpen(openingState);
     }
 
     public BookSpread currentSpread() {
@@ -165,7 +179,9 @@ public final class BookScreenController implements BookProjectionController.Proj
     }
 
     public boolean isOpening() {
-        return animController.getState() == BookAnimState.OPENING;
+        return animController.getState() == BookAnimState.OPENING
+                || animController.getState() == BookAnimState.OPENING_FRONT
+                || animController.getState() == BookAnimState.OPENING_BACK;
     }
 
     public boolean isIdleOpen() {
@@ -201,7 +217,9 @@ public final class BookScreenController implements BookProjectionController.Proj
     }
 
     public boolean isClosing() {
-        return animController.getState() == BookAnimState.CLOSING;
+        return animController.getState() == BookAnimState.CLOSING
+                || animController.getState() == BookAnimState.CLOSING_FRONT
+                || animController.getState() == BookAnimState.CLOSING_BACK;
     }
 
     public int spreadIndex() {

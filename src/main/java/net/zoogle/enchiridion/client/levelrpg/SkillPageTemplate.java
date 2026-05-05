@@ -13,9 +13,9 @@ final class SkillPageTemplate {
         page.addInteraction(
                 "skill-button:" + skill.name() + ":0",
                 pageContent.text(JournalPageSlot.INTERACTION, "View Skill"),
-                Component.literal("Open " + skill.name()),
+                Component.literal("Project " + skill.name() + " above the book"),
                 (bookContext, spreadIndex, mouseButton) -> mouseButton == 0
-                        && LevelRpgJournalInteractionBridge.openSkillScreen(bookContext, skill.name())
+                        && LevelRpgJournalInteractionBridge.openSkillProjection(bookContext, skill.name())
         );
         page.addTitle(pageContent.text(JournalPageSlot.TITLE, skill.name()));
         // Invested level is live progression data — never read from JournalContentStore or template

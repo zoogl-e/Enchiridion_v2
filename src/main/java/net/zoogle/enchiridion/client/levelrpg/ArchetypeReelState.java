@@ -7,17 +7,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class ArchetypeReelState {
-    private static final float MOVE_SMOOTHING = 0.22f;
+    private static final float MOVE_SMOOTHING = 0.36f;
     private static final float MOVE_SNAP_DISTANCE = 0.025f;
+    private static final float INERTIA_DAMPING = 0.84f;
+    private static final float INERTIA_SNAP_FORCE = 0.18f;
+    private static final float INERTIA_STOP_SPEED = 0.003f;
+    private static final float INERTIA_STOP_OFFSET = 0.03f;
+    private static final float DRAG_PIXELS_PER_SLOT = 84.0f;
     private static final float FOCUS_TILT_SMOOTHING = 0.18f;
     private static final float MAX_FOCUS_TILT_YAW = 6.0f;
     private static final float MAX_FOCUS_TILT_PITCH = 4.0f;
-    private static final int CONFIRMING_TICKS = 8;
-    private static final int BURNING_TICKS = 18;
     private static final int RETURN_TICKS = 12;
     private static final int ENTRANCE_TICKS = 10;
     /** Min ticks between keyboard reel steps (reduces GLFW key-repeat skipping multiple cards). */
-    private static final int KEYBOARD_NAV_COOLDOWN_TICKS = 4;
+    private static final int KEYBOARD_NAV_COOLDOWN_TICKS = 1;
 
     private boolean active;
     private List<JournalArchetypeChoice> entries = List.of();
@@ -37,12 +40,20 @@ public final class ArchetypeReelState {
     private ResourceLocation selectedArchetypeId;
     private int entranceTick;
     private int keyboardNavigateCooldownTicks;
+    private boolean dragging;
+    private int draggedIndex = -1;
+    private boolean dropTargetHovered;
+    private boolean bindRequestQueued;
+    private float dragMouseX;
+    private float dragMouseY;
+    private float dragFrontBlend;
+    private float dragLastMouseX;
+    private boolean dragMouseInitialized;
+    private float inertialVelocity;
 
     public enum Phase {
         IDLE,
         MOVING,
-        CONFIRMING,
-        BURNING,
         BOUND_RETURN
     }
 
@@ -68,6 +79,11 @@ public final class ArchetypeReelState {
         this.phase = Phase.IDLE;
         this.entranceTick = 0;
         this.keyboardNavigateCooldownTicks = 0;
+        this.bindRequestQueued = false;
+        this.dragFrontBlend = 0.0f;
+        this.dragLastMouseX = 0.0f;
+        this.dragMouseInitialized = false;
+        this.inertialVelocity = 0.0f;
         return true;
     }
 
@@ -81,6 +97,14 @@ public final class ArchetypeReelState {
         focusedTiltPitch = 0.0f;
         entranceTick = 0;
         keyboardNavigateCooldownTicks = 0;
+        dragging = false;
+        draggedIndex = -1;
+        dropTargetHovered = false;
+        bindRequestQueued = false;
+        dragFrontBlend = 0.0f;
+        dragLastMouseX = 0.0f;
+        dragMouseInitialized = false;
+        inertialVelocity = 0.0f;
     }
 
     public void tick(@Nullable ResourceLocation syncedBoundArchetypeId) {
@@ -95,30 +119,20 @@ public final class ArchetypeReelState {
         if (entranceTick < ENTRANCE_TICKS) {
             entranceTick++;
         }
+        float targetDragBlend = dragging ? 1.0f : 0.0f;
+        dragFrontBlend = approach(dragFrontBlend, targetDragBlend, 0.24f);
 
         updateMovement();
         if (syncedBoundArchetypeId != null) {
             boundArchetypeId = syncedBoundArchetypeId;
             if (selectedArchetypeId != null && selectedArchetypeId.equals(syncedBoundArchetypeId)
-                    && (phase == Phase.BURNING || phase == Phase.CONFIRMING)) {
+                    && bindRequestIssued) {
                 phase = Phase.BOUND_RETURN;
                 phaseTick = 0;
             }
         }
 
         switch (phase) {
-            case CONFIRMING -> {
-                phaseTick++;
-                transitionProgress = Math.min(1.0f, phaseTick / (float) CONFIRMING_TICKS);
-                if (phaseTick >= CONFIRMING_TICKS) {
-                    phase = Phase.BURNING;
-                    phaseTick = 0;
-                }
-            }
-            case BURNING -> {
-                phaseTick++;
-                transitionProgress = Math.min(1.0f, phaseTick / (float) BURNING_TICKS);
-            }
             case BOUND_RETURN -> {
                 phaseTick++;
                 transitionProgress = Math.min(1.0f, phaseTick / (float) RETURN_TICKS);
@@ -178,7 +192,6 @@ public final class ArchetypeReelState {
     public float globalPresentationAlpha() {
         float entrance = Math.min(1.0f, entranceTick / (float) ENTRANCE_TICKS);
         return switch (phase) {
-            case BURNING -> entrance * (1.0f - 0.78f * transitionProgress);
             case BOUND_RETURN -> entrance * Math.max(0.0f, 0.22f * (1.0f - transitionProgress));
             default -> entrance;
         };
@@ -212,25 +225,47 @@ public final class ArchetypeReelState {
 
     public void markBindingRequestIssued() {
         bindRequestIssued = true;
+        bindRequestQueued = false;
     }
 
     public boolean readyToRequestBind() {
-        return phase == Phase.BURNING && !bindRequestIssued && transitionProgress >= 0.6f;
+        return phase == Phase.IDLE && bindRequestQueued && !bindRequestIssued;
     }
 
     public boolean readyToCloseAfterBoundReturn() {
         return phase == Phase.BOUND_RETURN && transitionProgress >= 1.0f;
     }
 
-    public void beginConfirming() {
+    public void queueBindRequestFromFocused() {
         if (!active || focusedChoice() == null) {
             return;
         }
         selectedArchetypeId = focusedArchetypeId();
-        phase = Phase.CONFIRMING;
-        phaseTick = 0;
+        phase = Phase.IDLE;
         bindRequestIssued = false;
-        transitionProgress = 0.0f;
+        bindRequestQueued = true;
+        transitionProgress = 1.0f;
+    }
+
+    public void queueBindRequestForChoice(@Nullable JournalArchetypeChoice choice) {
+        if (!active || choice == null || choice.archetypeId() == null) {
+            return;
+        }
+        for (int index = 0; index < entries.size(); index++) {
+            JournalArchetypeChoice entry = entries.get(index);
+            if (choice.archetypeId().equals(entry.archetypeId())) {
+                focusedIndex = index;
+                settledFocusedIndex = index;
+                hoveredIndex = index;
+                animatedFocusPosition = index;
+                break;
+            }
+        }
+        selectedArchetypeId = choice.archetypeId();
+        phase = Phase.IDLE;
+        bindRequestIssued = false;
+        bindRequestQueued = true;
+        transitionProgress = 1.0f;
     }
 
     public void abortToSelectable() {
@@ -240,7 +275,9 @@ public final class ArchetypeReelState {
         phase = Phase.IDLE;
         phaseTick = 0;
         bindRequestIssued = false;
+        bindRequestQueued = false;
         transitionProgress = 1.0f;
+        endDrag();
     }
 
     public void move(int direction) {
@@ -264,6 +301,104 @@ public final class ArchetypeReelState {
 
     public int hoveredIndex() {
         return hoveredIndex;
+    }
+
+    public boolean beginDrag(int index) {
+        if (!active || phase != Phase.IDLE || index < 0 || index >= entries.size()) {
+            return false;
+        }
+        setFocusIndex(index, false);
+        dragging = true;
+        draggedIndex = index;
+        dropTargetHovered = false;
+        dragMouseX = 0.0f;
+        dragMouseY = 0.0f;
+        dragLastMouseX = 0.0f;
+        dragMouseInitialized = false;
+        inertialVelocity = 0.0f;
+        return true;
+    }
+
+    public boolean dragging() {
+        return dragging;
+    }
+
+    public int draggedIndex() {
+        return draggedIndex;
+    }
+
+    public void setDropTargetHovered(boolean hovered) {
+        dropTargetHovered = hovered;
+    }
+
+    public boolean dropTargetHovered() {
+        return dropTargetHovered;
+    }
+
+    public void setDragMouse(float mouseX, float mouseY) {
+        if (dragging) {
+            if (!dragMouseInitialized) {
+                dragLastMouseX = mouseX;
+                dragMouseInitialized = true;
+            } else {
+                float deltaX = mouseX - dragLastMouseX;
+                dragLastMouseX = mouseX;
+                float slotDelta = -deltaX / DRAG_PIXELS_PER_SLOT;
+                if (Math.abs(slotDelta) > 0.0001f) {
+                    animatedFocusPosition += slotDelta;
+                    inertialVelocity = (inertialVelocity * 0.55f) + (slotDelta * 0.45f);
+                    updateFocusFromAnimatedPosition();
+                    transitionProgress = 0.0f;
+                    phase = Phase.MOVING;
+                }
+            }
+        }
+        dragMouseX = mouseX;
+        dragMouseY = mouseY;
+    }
+
+    public float dragMouseX() {
+        return dragMouseX;
+    }
+
+    public float dragMouseY() {
+        return dragMouseY;
+    }
+
+    public JournalArchetypeChoice draggedChoice() {
+        if (!dragging || draggedIndex < 0 || draggedIndex >= entries.size()) {
+            return null;
+        }
+        return entries.get(draggedIndex);
+    }
+
+    public float dragFrontBlend() {
+        return dragFrontBlend;
+    }
+
+    public void endDrag() {
+        dragging = false;
+        draggedIndex = -1;
+        dropTargetHovered = false;
+        dragMouseX = 0.0f;
+        dragMouseY = 0.0f;
+        dragLastMouseX = 0.0f;
+        dragMouseInitialized = false;
+    }
+
+    public void snapToNearestFocus() {
+        if (entries.isEmpty()) {
+            return;
+        }
+        float nearest = Math.round(animatedFocusPosition);
+        animatedFocusPosition = nearest;
+        inertialVelocity = 0.0f;
+        updateFocusFromAnimatedPosition();
+        settledFocusedIndex = focusedIndex;
+        phase = Phase.IDLE;
+        phaseTick = 0;
+        transitionProgress = 1.0f;
+        transitionDistance = 1.0f;
     }
 
     public void focusIndex(int index) {
@@ -327,6 +462,26 @@ public final class ArchetypeReelState {
     }
 
     private void updateMovement() {
+        if (entries.isEmpty()) {
+            return;
+        }
+        if (dragging) {
+            return;
+        }
+        if (Math.abs(inertialVelocity) > 0.0001f) {
+            inertialVelocity *= INERTIA_DAMPING;
+            animatedFocusPosition += inertialVelocity;
+            float nearest = Math.round(animatedFocusPosition);
+            float snapDelta = wrappedDelta(animatedFocusPosition, nearest, entries.size());
+            animatedFocusPosition += snapDelta * INERTIA_SNAP_FORCE;
+            updateFocusFromAnimatedPosition();
+            transitionProgress = 0.0f;
+            phase = Phase.MOVING;
+            if (Math.abs(inertialVelocity) < INERTIA_STOP_SPEED && Math.abs(snapDelta) < INERTIA_STOP_OFFSET) {
+                snapToNearestFocus();
+            }
+            return;
+        }
         float delta = wrappedDelta(animatedFocusPosition, focusedIndex, entries.size());
         animatedFocusPosition += delta * MOVE_SMOOTHING;
         float remaining = Math.abs(wrappedDelta(animatedFocusPosition, focusedIndex, entries.size()));
@@ -339,6 +494,17 @@ public final class ArchetypeReelState {
             }
         } else if (phase == Phase.MOVING) {
             transitionProgress = clamp(1.0f - (remaining / Math.max(0.001f, transitionDistance)), 0.0f, 1.0f);
+        }
+    }
+
+    private void updateFocusFromAnimatedPosition() {
+        if (entries.isEmpty()) {
+            return;
+        }
+        int nearestIndex = Math.floorMod(Math.round(animatedFocusPosition), entries.size());
+        focusedIndex = nearestIndex;
+        if (hoveredIndex < 0) {
+            hoveredIndex = nearestIndex;
         }
     }
 

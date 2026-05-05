@@ -4,7 +4,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
+import net.zoogle.enchiridion.Enchiridion;
 import net.zoogle.enchiridion.api.BookPageSide;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -19,6 +21,8 @@ import software.bernie.geckolib.util.RenderUtil;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAnimatable> {
     private static final float SURFACE_STABILITY_AREA_RATIO = 0.92f;
@@ -31,6 +35,111 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
         addRenderLayer(new DecorativePageMaskLayer(this));
         addRenderLayer(new TrackedSurfaceLayer(this));
         addRenderLayer(new MagicTextLayer(this));
+        addRenderLayer(new BoundArchetypeCardLayer(this));
+    }
+
+    private static final class BoundArchetypeCardLayer extends GeoRenderLayer<EnchiridionBookAnimatable> {
+        private static final String CARD_TEX_BONE = "archetype_card_tex";
+        // Keep compatibility with current model typo.
+        private static final String CARD_TEX_BONE_LEGACY = "archetpe_card_tex";
+        private static final Map<String, String> TEXTURE_ALIASES = Map.of(
+                "spellblade", "spellsword",
+                "master_crafter", "inventor"
+        );
+
+        private BoundArchetypeCardLayer(EnchiridionBookRenderer renderer) {
+            super(renderer);
+        }
+
+        @Override
+        public void renderForBone(
+                PoseStack poseStack,
+                EnchiridionBookAnimatable animatable,
+                GeoBone bone,
+                RenderType renderType,
+                MultiBufferSource bufferSource,
+                VertexConsumer buffer,
+                float partialTick,
+                int packedLight,
+                int packedOverlay
+        ) {
+            String boneName = bone.getName();
+            if (!CARD_TEX_BONE.equals(boneName) && !CARD_TEX_BONE_LEGACY.equals(boneName)) {
+                return;
+            }
+            if (bone.isHidden() || animatable.frontCoverCardState() == null || animatable.frontCoverCardState().boundArchetypeId() == null) {
+                return;
+            }
+            ResourceLocation cardTexture = resolveTexture(animatable.frontCoverCardState().boundArchetypeId());
+            VertexConsumer cardBuffer = bufferSource.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
+            renderCardPlaneWithFullUv(poseStack, bone, cardBuffer, packedLight);
+        }
+
+        private static ResourceLocation resolveTexture(ResourceLocation archetypeId) {
+            if (archetypeId == null) {
+                return EnchiridionBookGeoModel.BLANK_FRONT_TEXTURE;
+            }
+            String key = archetypeId.getPath().toLowerCase(Locale.ROOT).replace('-', '_');
+            String resolved = TEXTURE_ALIASES.getOrDefault(key, key);
+            if (!resolved.equals("knight")
+                    && !resolved.equals("inventor")
+                    && !resolved.equals("peasant")
+                    && !resolved.equals("spellsword")) {
+                return EnchiridionBookGeoModel.BLANK_FRONT_TEXTURE;
+            }
+            return ResourceLocation.fromNamespaceAndPath(Enchiridion.MODID, "textures/gui/" + resolved + ".png");
+        }
+
+        private void renderCardPlaneWithFullUv(PoseStack poseStack, GeoBone bone, VertexConsumer buffer, int packedLight) {
+            for (GeoCube cube : bone.getCubes()) {
+                poseStack.pushPose();
+                RenderUtil.translateToPivotPoint(poseStack, cube);
+                RenderUtil.rotateMatrixAroundCube(poseStack, cube);
+                RenderUtil.translateAwayFromPivotPoint(poseStack, cube);
+                PoseStack.Pose pose = poseStack.last();
+                Matrix4f matrix = pose.pose();
+                for (GeoQuad quad : cube.quads()) {
+                    renderQuadWithGeneratedUv(matrix, pose, quad, buffer, packedLight);
+                }
+                poseStack.popPose();
+            }
+        }
+
+        private static void renderQuadWithGeneratedUv(
+                Matrix4f matrix,
+                PoseStack.Pose pose,
+                GeoQuad quad,
+                VertexConsumer buffer,
+                int packedLight
+        ) {
+            GeoVertex[] vertices = quad.vertices();
+            if (vertices == null || vertices.length < 4) {
+                return;
+            }
+            float minX = Float.MAX_VALUE;
+            float minY = Float.MAX_VALUE;
+            float maxX = -Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+            for (GeoVertex vertex : vertices) {
+                minX = Math.min(minX, vertex.position().x());
+                minY = Math.min(minY, vertex.position().y());
+                maxX = Math.max(maxX, vertex.position().x());
+                maxY = Math.max(maxY, vertex.position().y());
+            }
+            float width = Math.max(0.0001f, maxX - minX);
+            float height = Math.max(0.0001f, maxY - minY);
+            for (GeoVertex vertex : vertices) {
+                Vector4f point = matrix.transform(new Vector4f(vertex.position().x(), vertex.position().y(), vertex.position().z(), 1.0f));
+                float u = (vertex.position().x() - minX) / width;
+                float v = (vertex.position().y() - minY) / height;
+                buffer.addVertex(point.x(), point.y(), point.z())
+                        .setColor(255, 255, 255, 255)
+                        .setUv(u, v)
+                        .setOverlay(OverlayTexture.NO_OVERLAY)
+                        .setLight(packedLight)
+                        .setNormal(pose, 0.0f, 0.0f, 1.0f);
+            }
+        }
     }
 
     static CapturedPageSurface capturedPageSurface(BookPageSide pageSide) {

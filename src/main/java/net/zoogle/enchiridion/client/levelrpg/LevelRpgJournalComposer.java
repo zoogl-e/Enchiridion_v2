@@ -246,6 +246,7 @@ final class LevelRpgJournalComposer {
             rows.add(new JournalCharacterStat(
                     name,
                     value,
+                    fallback != null ? fallback.masteryValue() : 0,
                     fallback != null ? fallback.masteryLevelNorm() : 0f,
                     fallback != null ? fallback.masteryNextLevelRingNorm() : 0f,
                     fallback != null && fallback.canAllocate(),

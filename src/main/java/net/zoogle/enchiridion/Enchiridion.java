@@ -8,6 +8,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.zoogle.enchiridion.client.audio.PostBindAmbientScheduler;
 import net.zoogle.enchiridion.client.demo.DemoBookRegistration;
 import net.zoogle.enchiridion.client.input.Keybinds;
 import net.zoogle.enchiridion.client.input.OpenKeyHandler;
@@ -25,6 +26,7 @@ public final class Enchiridion {
             modBus.addListener(DemoBookRegistration::onClientSetup);
             modBus.addListener(LevelRpgJournalBookRegistration::onClientSetup);
             NeoForge.EVENT_BUS.addListener(OpenKeyHandler::onKeyInput);
+            NeoForge.EVENT_BUS.addListener(PostBindAmbientScheduler::onClientTick);
         }
     }
 

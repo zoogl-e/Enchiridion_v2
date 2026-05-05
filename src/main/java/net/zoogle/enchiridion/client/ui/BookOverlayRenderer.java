@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.zoogle.enchiridion.api.BookTrackedRegion;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
@@ -70,9 +71,19 @@ final class BookOverlayRenderer {
         } else if (viewState.hoveredProjectionButton() != null && viewState.hoveredProjectionButton().view().primaryActionLabel() != null) {
             graphics.renderTooltip(font, viewState.hoveredProjectionButton().view().primaryActionLabel(), mouseX, mouseY);
         } else if (viewState.hoveredInteractiveTarget() != null && viewState.hoveredInteractiveTarget().tooltip() != null) {
-            int tooltipX = Math.round(viewState.hoveredInteractiveTarget().screenRect().x() + (viewState.hoveredInteractiveTarget().screenRect().width() / 2.0f));
-            int tooltipY = Math.round(viewState.hoveredInteractiveTarget().screenRect().y() + Math.max(0.0f, viewState.hoveredInteractiveTarget().screenRect().height() / 2.0f));
+            int tooltipX = mouseX;
+            int tooltipY = mouseY;
+            if (!isCursorFollowTooltipTarget(viewState.hoveredInteractiveTarget())) {
+                tooltipX = Math.round(viewState.hoveredInteractiveTarget().screenRect().x() + (viewState.hoveredInteractiveTarget().screenRect().width() / 2.0f));
+                tooltipY = Math.round(viewState.hoveredInteractiveTarget().screenRect().y() + Math.max(0.0f, viewState.hoveredInteractiveTarget().screenRect().height() / 2.0f));
+            }
             graphics.renderTooltip(font, viewState.hoveredInteractiveTarget().tooltip(), tooltipX, tooltipY);
         }
+    }
+
+    private static boolean isCursorFollowTooltipTarget(PageInteractiveNode target) {
+        return target != null
+                && target.trackedRegion() != null
+                && target.trackedRegion().anchor() == BookTrackedRegion.Anchor.FRONT_COVER_CARD;
     }
 }

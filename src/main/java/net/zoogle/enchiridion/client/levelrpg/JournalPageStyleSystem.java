@@ -640,7 +640,7 @@ public final class JournalPageStyleSystem {
                         new SlotFit(Alignment.CENTER, 2, true, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
                 ),
                 JournalPageSlot.BODY, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.105, 106.0 / 145.0, 0.79, 28.0 / 145.0),
+                        new JournalTemplateStore.NormalizedSlotRegion(0.105, 96.0 / 145.0, 0.79, 42.0 / 145.0),
                         new SlotFit(Alignment.CENTER, 4, true, OverflowPolicy.CLAMP, 1.0f, 1.0f)
                 ),
                 JournalPageSlot.FOOTER, new DefaultSlotSpec(
@@ -672,7 +672,7 @@ public final class JournalPageStyleSystem {
                         new SlotFit(Alignment.CENTER, 1, false, OverflowPolicy.ELLIPSIZE, 0.9f, 1.0f)
                 ),
                 JournalPageSlot.ROWS, new DefaultSlotSpec(
-                        new JournalTemplateStore.NormalizedSlotRegion(0.045, 34.0 / 145.0, 0.91, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 48) / 145.0),
+                        new JournalTemplateStore.NormalizedSlotRegion(0.045, 28.0 / 145.0, 0.91, (double) (JournalLayoutMetrics.PAGE_CONTENT_HEIGHT - 38) / 145.0),
                         new SlotFit(Alignment.LEFT, Integer.MAX_VALUE, false, OverflowPolicy.INVALID, 1.0f, 1.0f)
                 ),
                 JournalPageSlot.FOOTER, new DefaultSlotSpec(

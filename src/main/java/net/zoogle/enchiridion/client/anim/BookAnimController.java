@@ -17,7 +17,14 @@ public final class BookAnimController {
         if (state != BookAnimState.CLOSED) {
             return false;
         }
-        state = BookAnimState.OPENING;
+        return requestOpen(BookAnimState.OPENING);
+    }
+
+    public boolean requestOpen(BookAnimState openState) {
+        if (!isOpeningState(openState) || state != BookAnimState.CLOSED) {
+            return false;
+        }
+        state = openState;
         stateTime = 0.0f;
         swappedThisState = false;
         return true;
@@ -36,13 +43,13 @@ public final class BookAnimController {
                     enterClosed();
                 }
             }
-            case OPENING -> {
-                if (stateTime >= BookAnimationSpec.durationSeconds(BookAnimState.OPENING)) {
+            case OPENING, OPENING_FRONT, OPENING_BACK -> {
+                if (stateTime >= BookAnimationSpec.durationSeconds(state)) {
                     enterIdle();
                 }
             }
-            case CLOSING -> {
-                if (stateTime >= BookAnimationSpec.durationSeconds(BookAnimState.CLOSING)) {
+            case CLOSING, CLOSING_FRONT, CLOSING_BACK -> {
+                if (stateTime >= BookAnimationSpec.durationSeconds(state)) {
                     enterClosed();
                 }
             }
@@ -147,7 +154,17 @@ public final class BookAnimController {
         if (state == BookAnimState.CLOSED || state == BookAnimState.CLOSING) {
             return false;
         }
-        state = BookAnimState.CLOSING;
+        return requestClose(BookAnimState.CLOSING);
+    }
+
+    public boolean requestClose(BookAnimState closeState) {
+        if (!isCloseState(closeState)) {
+            return false;
+        }
+        if (state == BookAnimState.CLOSED || isCloseState(state)) {
+            return false;
+        }
+        state = closeState;
         stateTime = 0.0f;
         swappedThisState = false;
         pendingSpread = currentSpread;
@@ -174,10 +191,23 @@ public final class BookAnimController {
 
     public float getNormalizedProgress() {
         float duration = switch (state) {
-            case ARRIVING, OPENING, CLOSING, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN, FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> BookAnimationSpec.durationSeconds(state);
+            case ARRIVING, OPENING, OPENING_FRONT, OPENING_BACK, CLOSING, CLOSING_FRONT, CLOSING_BACK,
+                    FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN, FLIPPING_NEXT, FLIPPING_PREV, RIFFLING_NEXT, RIFFLING_PREV -> BookAnimationSpec.durationSeconds(state);
             default -> 1.0f;
         };
         return Math.clamp(stateTime / duration, 0.0f, 1.0f);
+    }
+
+    private static boolean isCloseState(BookAnimState state) {
+        return state == BookAnimState.CLOSING
+                || state == BookAnimState.CLOSING_FRONT
+                || state == BookAnimState.CLOSING_BACK;
+    }
+
+    private static boolean isOpeningState(BookAnimState state) {
+        return state == BookAnimState.OPENING
+                || state == BookAnimState.OPENING_FRONT
+                || state == BookAnimState.OPENING_BACK;
     }
 
     private void enterFlip(BookAnimState nextState) {

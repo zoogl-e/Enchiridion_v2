@@ -298,7 +298,7 @@ final class JournalElementFactory {
 
     static LedgerRowLayout ledgerRowLayout(BookPageSide pageSide, JournalCharacterStat stat, int rowY, int targetPageIndex) {
         String label = stat.name();
-        String valueText = String.valueOf(stat.value());
+        String valueText = stat.value() + " (Pot. " + stat.masteryValue() + ")";
         JournalLayoutMetrics.PageContentRect contentRect = JournalLayoutMetrics.pageContentRect(pageSide);
         int rowHeight = ledgerRowHeight();
         int labelHeight = rowHeight;
@@ -330,7 +330,7 @@ final class JournalElementFactory {
         return Math.max(
                 JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.BODY),
                 JournalLayoutMetrics.lineHeightFor(BookTextBlock.Kind.SUBTITLE)
-        ) + 2;
+        );
     }
 
     static BookPageElement.InteractiveTextElement ledgerLabel(LedgerRowLayout rowLayout) {

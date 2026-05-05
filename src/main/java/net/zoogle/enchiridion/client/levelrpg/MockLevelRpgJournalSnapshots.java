@@ -23,13 +23,13 @@ public final class MockLevelRpgJournalSnapshots {
                         "Invested: 0 levels chosen\nMastery: 0 levels earned\nSkill Points: 0 ready | 0 spent | 0 earned",
                         "Mastery is earned through practice. Skill Levels are chosen with the points that mastery grants.",
                         List.of(
-                                new JournalCharacterStat("Valor", 0, 0f, 0f, false, "Combat mastery sharpens your offense and hardens your body."),
-                                new JournalCharacterStat("Finesse", 0, 0f, 0f, false, "Deliberate movement sharpens your footwork and positioning."),
-                                new JournalCharacterStat("Arcana", 0, 0f, 0f, false, "Scholarly understanding multiplies what other skills can do."),
-                                new JournalCharacterStat("Delving", 0, 0f, 0f, false, "Mastery of the hidden and submerged improves your extraction pace."),
-                                new JournalCharacterStat("Forging", 0, 0f, 0f, false, "Forging practice reinforces the arms and armor you craft."),
-                                new JournalCharacterStat("Artificing", 0, 0f, 0f, false, "Making things that persist — architecture and contraptions alike."),
-                                new JournalCharacterStat("Hearth", 0, 0f, 0f, false, "Sustenance, alchemy, and the caretaker's craft.")
+                                new JournalCharacterStat("Valor", 0, 0, 0f, 0f, false, "Combat mastery sharpens your offense and hardens your body."),
+                                new JournalCharacterStat("Finesse", 0, 0, 0f, 0f, false, "Deliberate movement sharpens your footwork and positioning."),
+                                new JournalCharacterStat("Arcana", 0, 0, 0f, 0f, false, "Scholarly understanding multiplies what other skills can do."),
+                                new JournalCharacterStat("Delving", 0, 0, 0f, 0f, false, "Mastery of the hidden and submerged improves your extraction pace."),
+                                new JournalCharacterStat("Forging", 0, 0, 0f, 0f, false, "Forging practice reinforces the arms and armor you craft."),
+                                new JournalCharacterStat("Artificing", 0, 0, 0f, 0f, false, "Making things that persist — architecture and contraptions alike."),
+                                new JournalCharacterStat("Hearth", 0, 0, 0f, 0f, false, "Sustenance, alchemy, and the caretaker's craft.")
                         )
                 ),
                 List.of(

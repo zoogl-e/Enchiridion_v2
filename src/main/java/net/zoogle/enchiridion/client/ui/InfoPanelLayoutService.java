@@ -62,12 +62,14 @@ final class InfoPanelLayoutService {
      * Navigation hints are rendered inside this panel's bottom strip.
      */
     PanelRect resolveStaticReelArchetypePanelRect(int viewportWidth, int viewportHeight) {
-        int panelWidth = Math.min(440, Math.max(200, viewportWidth - 100));
-        int panelHeight = 160;
+        int panelWidth = Math.min(360, Math.max(220, viewportWidth - 220));
+        int panelHeight = 112;
         int panelX = (viewportWidth / 2) - (panelWidth / 2);
-        int panelY = viewportHeight - panelHeight - 24;
+        int panelY = Math.round(viewportHeight * 0.69f);
         panelX = Math.max(24, Math.min(panelX, viewportWidth - panelWidth - 24));
-        panelY = Math.max(viewportHeight / 2, panelY);
+        int minY = Math.round(viewportHeight * 0.58f);
+        int maxY = Math.max(minY, Math.round(viewportHeight * 0.82f) - panelHeight);
+        panelY = Math.max(minY, Math.min(panelY, maxY));
         return new PanelRect(panelX, panelY, panelWidth, panelHeight);
     }
 

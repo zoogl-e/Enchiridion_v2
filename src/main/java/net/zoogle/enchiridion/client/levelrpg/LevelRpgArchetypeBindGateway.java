@@ -7,4 +7,9 @@ public final class LevelRpgArchetypeBindGateway implements ArchetypeBindGateway 
     public boolean requestBind(BookContext context, String focusId) {
         return LevelRpgArchetypeBindingBridge.requestBindArchetype(context, focusId);
     }
+
+    @Override
+    public ArchetypeBindFeedback latestFeedback() {
+        return LevelRpgArchetypeBindingBridge.latestBindFeedback();
+    }
 }
