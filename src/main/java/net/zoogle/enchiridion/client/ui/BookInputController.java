@@ -13,13 +13,14 @@ final class BookInputController {
             BookViewState state,
             int keyCode,
             Supplier<Boolean> superKeyPressed,
-            Runnable closeNow
+            Runnable closeNow,
+            Runnable beginUserClosing
     ) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (controller.isClosing() || controller.isClosed() || controller.isArriving()) {
                 closeNow.run();
             } else {
-                controller.beginUserClosing();
+                beginUserClosing.run();
             }
             return true;
         }
@@ -76,6 +77,18 @@ final class BookInputController {
             state.beginInspect(mouseX, mouseY);
             return true;
         }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && controller.isBookmarkInputAllowed()
+                && state.bookmarkInteractable()
+                && state.bookmarkHovered()) {
+            state.triggerBookmarkClickPulse();
+            if (!controller.isBountyDocumentMode()) {
+                state.beginBountyOfferTransition();
+            } else {
+                state.beginReturnFromBountyTransition();
+            }
+            return true;
+        }
         if (modeCoordinator.canHandleProjectionInput(controller) && controller.isProjectionInteractive()) {
             ProjectionButtonHit projectionButton = state.hoveredProjectionButton();
             if (projectionButton != null && projectionButton.view().hasPrimaryAction()) {
@@ -86,6 +99,18 @@ final class BookInputController {
         if (modeCoordinator.canHandleJournalInput(controller)) {
             PageInteractiveNode hoveredTarget = state.hoveredInteractiveTarget();
             if (hoveredTarget != null && hoveredTarget.enabled() && hoveredTarget.action().onClick(controller.context(), state.displayedSpreadIndex(), button)) {
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                    && controller.isBountyDocumentMode()
+                    && layout != null
+                    && isPointInBookBounds(layout, mouseX, mouseY)) {
+                double bookMidX = layout.bookX() + (layout.bookWidth() / 2.0);
+                if (mouseX < bookMidX) {
+                    controller.previousSpread();
+                } else {
+                    controller.nextSpread();
+                }
                 return true;
             }
         }
@@ -106,5 +131,12 @@ final class BookInputController {
             return true;
         }
         return false;
+    }
+
+    private static boolean isPointInBookBounds(BookLayout layout, double mouseX, double mouseY) {
+        return mouseX >= layout.bookX()
+                && mouseX <= layout.bookX() + layout.bookWidth()
+                && mouseY >= layout.bookY()
+                && mouseY <= layout.bookY() + layout.bookHeight();
     }
 }

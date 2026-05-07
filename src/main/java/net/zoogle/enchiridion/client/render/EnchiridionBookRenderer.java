@@ -38,7 +38,27 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
         addRenderLayer(new BoundArchetypeCardLayer(this));
     }
 
+    @Override
+    public void renderCubesOfBone(PoseStack poseStack, GeoBone bone, VertexConsumer buffer, int packedLight, int packedOverlay, int colour) {
+        EnchiridionBookAnimatable animatable = getAnimatable();
+        if (animatable != null
+                && animatable.animState() == net.zoogle.enchiridion.client.anim.BookAnimState.IDLE_BACK
+                && isRightDecorativePageBoneName(bone.getName())) {
+            return;
+        }
+        super.renderCubesOfBone(poseStack, bone, buffer, packedLight, packedOverlay, colour);
+    }
+
+    private static boolean isRightDecorativePageBoneName(String boneName) {
+        return (boneName.startsWith("a_page_6_") && !"a_page_6_1".equals(boneName))
+                || boneName.startsWith("a_page_7_")
+                || "page_8".equals(boneName)
+                || "page_9".equals(boneName)
+                || "page_10".equals(boneName);
+    }
+
     private static final class BoundArchetypeCardLayer extends GeoRenderLayer<EnchiridionBookAnimatable> {
+        private static final String CARD_BONE = "archetype_card";
         private static final String CARD_TEX_BONE = "archetype_card_tex";
         // Keep compatibility with current model typo.
         private static final String CARD_TEX_BONE_LEGACY = "archetpe_card_tex";
@@ -64,13 +84,13 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
                 int packedOverlay
         ) {
             String boneName = bone.getName();
-            if (!CARD_TEX_BONE.equals(boneName) && !CARD_TEX_BONE_LEGACY.equals(boneName)) {
+            if (!CARD_BONE.equals(boneName) && !CARD_TEX_BONE.equals(boneName) && !CARD_TEX_BONE_LEGACY.equals(boneName)) {
                 return;
             }
-            if (bone.isHidden() || animatable.frontCoverCardState() == null || animatable.frontCoverCardState().boundArchetypeId() == null) {
+            if (bone.isHidden() || animatable.frontCoverCardState() == null || !animatable.frontCoverCardState().visible()) {
                 return;
             }
-            ResourceLocation cardTexture = resolveTexture(animatable.frontCoverCardState().boundArchetypeId());
+            ResourceLocation cardTexture = resolveTexture(animatable.frontCoverCardState().displayedArchetypeId());
             VertexConsumer cardBuffer = bufferSource.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
             renderCardPlaneWithFullUv(poseStack, bone, cardBuffer, packedLight);
         }
@@ -283,32 +303,15 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
             return boneName.startsWith("page_") || boneName.startsWith("a_page_");
         }
 
-        private static boolean isFrontCoverMode(EnchiridionBookAnimatable animatable) {
-            EnchiridionBookAnimatable.ReadableSurfaceTarget leftSurfaceTarget = animatable.leftSurfaceTarget();
-            return leftSurfaceTarget != null
-                    && EnchiridionBookAnimatable.MAGIC_TEXT_FRONT_LEFT_BONE.equals(leftSurfaceTarget.boneName());
-        }
-
         private static boolean isBackCoverMode(EnchiridionBookAnimatable animatable) {
-            return animatable.leftSurfaceTarget() != null
-                    && !animatable.leftSurfaceTarget().active()
-                    && animatable.rightSurfaceTarget() != null
-                    && !animatable.rightSurfaceTarget().active();
+            return switch (animatable.animState()) {
+                case IDLE_BACK, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN, OPENING_BACK, CLOSING_BACK -> true;
+                default -> false;
+            };
         }
 
         private static boolean shouldSuppressDecorativePageBone(EnchiridionBookAnimatable animatable, String boneName) {
-            if (isFrontCoverMode(animatable) && isLeftDecorativePageBone(boneName)) {
-                return true;
-            }
             return isBackCoverMode(animatable) && isRightDecorativePageBone(boneName);
-        }
-
-        private static boolean isLeftDecorativePageBone(String boneName) {
-            return "page_1".equals(boneName)
-                    || "page_2".equals(boneName)
-                    || "page_3".equals(boneName)
-                    || "page_4".equals(boneName)
-                    || boneName.startsWith("a_page_5_");
         }
 
         private static boolean isRightDecorativePageBone(String boneName) {
@@ -349,7 +352,8 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
             ResourceLocation magicTexture = switch (bone.getName()) {
                 case EnchiridionBookAnimatable.MAGIC_TEXT_LEFT_BONE,
                         EnchiridionBookAnimatable.MAGIC_TEXT_FRONT_LEFT_BONE -> animatable.magicLeftTextureLocation();
-                case EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE -> animatable.magicRightTextureLocation();
+                case EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE,
+                        EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_FRONT_BONE -> animatable.magicRightTextureLocation();
                 default -> null;
             };
 
@@ -360,7 +364,8 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
             BookPageSide pageSide = switch (bone.getName()) {
                 case EnchiridionBookAnimatable.MAGIC_TEXT_LEFT_BONE,
                         EnchiridionBookAnimatable.MAGIC_TEXT_FRONT_LEFT_BONE -> BookPageSide.LEFT;
-                case EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE -> BookPageSide.RIGHT;
+                case EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE,
+                        EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_FRONT_BONE -> BookPageSide.RIGHT;
                 default -> null;
             };
             if (pageSide == null) {
@@ -403,7 +408,7 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
                 RenderUtil.translateAwayFromPivotPoint(poseStack, cube);
                 Matrix4f matrix = new Matrix4f(poseStack.last().pose());
                 for (GeoQuad quad : cube.quads()) {
-                    CapturedFace face = captureFace(pageSide, matrix, quad);
+                    CapturedFace face = captureFace(pageSide, bone.getName(), matrix, quad);
                     if (face == null) {
                         continue;
                     }
@@ -419,10 +424,10 @@ final class EnchiridionBookRenderer extends GeoObjectRenderer<EnchiridionBookAni
             return bestFace.surface();
         }
 
-        private CapturedFace captureFace(BookPageSide pageSide, Matrix4f matrix, GeoQuad quad) {
+        private CapturedFace captureFace(BookPageSide pageSide, String boneName, Matrix4f matrix, GeoQuad quad) {
             List<CapturedVertex> vertices = new ArrayList<>(4);
             for (GeoVertex vertex : quad.vertices()) {
-                BookPageTexturePipeline.LocalTexturePoint local = BookPageTexturePipeline.localPointForTextureUv(pageSide, vertex.texU(), vertex.texV());
+                BookPageTexturePipeline.LocalTexturePoint local = BookPageTexturePipeline.localPointForTextureUv(pageSide, boneName, vertex.texU(), vertex.texV());
                 if (local == null) {
                     return null;
                 }

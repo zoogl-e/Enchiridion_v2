@@ -7,8 +7,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.zoogle.enchiridion.api.BookTrackedRegion;
+import net.zoogle.enchiridion.api.BookContentMode;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookFrontCoverCardState;
+import net.zoogle.enchiridion.api.BookSection;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.anim.BookAnimationSpec;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
@@ -63,6 +65,11 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
     private static final float SKILLTREE_BOOK_X_OFFSET = 0.0f;
     /** Extra screen-space Y (positive = downward) while the archetype reel is open. */
     private static final float REEL_BOOK_EXTRA_DOWN = 68.0f;
+    // v1 bookmark tab hover region (screen-space): tuned to the red tab above page content.
+    private static final float BOOKMARK_HITBOX_X_OFFSET = 0.105f;
+    private static final float BOOKMARK_HITBOX_Y_OFFSET = -0.15f;
+    private static final float BOOKMARK_HITBOX_WIDTH = 0.092f;
+    private static final float BOOKMARK_HITBOX_HEIGHT = 0.105f;
 
     private static final EnchiridionBookRenderer BOOK_RENDERER = new EnchiridionBookRenderer();
     private final EnchiridionBookAnimatable bookAnimatable = new EnchiridionBookAnimatable();
@@ -314,6 +321,9 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
             BookLayout layout,
             BookSpread spread,
             int spreadIndex,
+            BookContentMode contentMode,
+            BookSection bookSection,
+            boolean suppressPageNumbers,
             BookAnimState state,
             float animationProgress,
             float projectionProgress,
@@ -331,12 +341,20 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
             ArchetypeReelState archetypeReelState,
             boolean closedHovered,
             float inspectYaw,
-            float inspectPitch
+            float inspectPitch,
+            float bookmarkAlpha,
+            float bookmarkTuckAmount,
+            float bookmarkPopAmount,
+            float bookmarkHoverAmount,
+            float bookmarkClickAmount
     ) {
         try {
             BookPageTexturePipeline.TextureSet textures = pageTexturePipeline.textureSetFor(
                     spread,
+                    contentMode,
+                    bookSection,
                     spreadIndex,
+                    suppressPageNumbers,
                     textAlpha,
                     projectionProgress,
                     focusedPageSide,
@@ -354,6 +372,13 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
             bookAnimatable.setMagicTextTextureLocations(textures.magicLeftTexture(), textures.magicRightTexture());
             bookAnimatable.setFrontCoverCardState(frontCoverCardState);
             bookAnimatable.setReadableSurfaceTargets(leftSurfaceTargetFor(state), rightSurfaceTargetFor(state));
+            bookAnimatable.setBookmarkPoseState(
+                    bookmarkAlpha,
+                    bookmarkTuckAmount,
+                    bookmarkPopAmount,
+                    bookmarkHoverAmount,
+                    bookmarkClickAmount
+            );
             PresentationTransform presentation = presentationTransform(layout, state, animationProgress, projectionProgress, projectionFocusOffset, inspectYaw, partialTick);
             ReelFrameSnapshot reelFrame = reelFrameSnapshot(layout, archetypeReelState);
 
@@ -615,10 +640,19 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
         return trimmed + ellipsis;
     }
 
-    public void prewarmPageTextures(BookSpread spread, int spreadIndex) {
+    public void prewarmPageTextures(
+            BookSpread spread,
+            BookContentMode contentMode,
+            BookSection bookSection,
+            int spreadIndex,
+            boolean suppressPageNumbers
+    ) {
         pageTexturePipeline.textureSetFor(
                 spread,
+                contentMode,
+                bookSection,
                 spreadIndex,
+                suppressPageNumbers,
                 0.0f,
                 0.0f,
                 null,
@@ -638,6 +672,28 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
                 && mouseX <= centerX + halfWidth
                 && mouseY >= centerY - halfHeight
                 && mouseY <= centerY + halfHeight;
+    }
+
+    public boolean isBookmarkHovering(BookLayout layout, double mouseX, double mouseY) {
+        ScreenRect hitbox = bookmarkHitbox(layout);
+        if (hitbox == null) {
+            return false;
+        }
+        return mouseX >= hitbox.x()
+                && mouseX <= hitbox.x() + hitbox.width()
+                && mouseY >= hitbox.y()
+                && mouseY <= hitbox.y() + hitbox.height();
+    }
+
+    public ScreenRect bookmarkHitbox(BookLayout layout) {
+        if (layout == null) {
+            return null;
+        }
+        float x = layout.bookX() + (layout.bookWidth() * BOOKMARK_HITBOX_X_OFFSET);
+        float y = layout.bookY() + (layout.bookHeight() * BOOKMARK_HITBOX_Y_OFFSET);
+        float width = layout.bookWidth() * BOOKMARK_HITBOX_WIDTH;
+        float height = layout.bookHeight() * BOOKMARK_HITBOX_HEIGHT;
+        return new ScreenRect(x, y, width, height);
     }
 
     public static float projectionVerticalOffset(float projectionProgress) {
@@ -704,10 +760,7 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
 
     private static EnchiridionBookAnimatable.ReadableSurfaceTarget leftSurfaceTargetFor(BookAnimState state) {
         return switch (state) {
-            case IDLE_FRONT, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
-                    EnchiridionBookAnimatable.MAGIC_TEXT_FRONT_LEFT_BONE,
-                    false
-            );
+            case IDLE_FRONT, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN -> EnchiridionBookAnimatable.ReadableSurfaceTarget.none();
             case IDLE_BACK, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN,
                     IDLE_SKILLTREE, IDLE_FRONT_SKILLTREE, FLIPPING_NEXT_SKILLTREE, FLIPPING_PREV_SKILLTREE, RIFFLING_NEXT_SKILLTREE, RIFFLING_PREV_SKILLTREE,
                     CLOSED, CLOSING, ARRIVING -> EnchiridionBookAnimatable.ReadableSurfaceTarget.none();
@@ -720,15 +773,16 @@ public final class BookSceneRenderer implements BookInteractionGeometry {
 
     private static EnchiridionBookAnimatable.ReadableSurfaceTarget rightSurfaceTargetFor(BookAnimState state) {
         return switch (state) {
-            // Render the legacy title page texture on the right page bone during front cover state.
-            case IDLE_FRONT -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
+            case IDLE_FRONT, FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
+                    EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_FRONT_BONE,
+                    true
+            );
+            case IDLE_SKILLTREE, IDLE_FRONT_SKILLTREE, FLIPPING_NEXT_SKILLTREE, FLIPPING_PREV_SKILLTREE, RIFFLING_NEXT_SKILLTREE, RIFFLING_PREV_SKILLTREE,
+                    CLOSED, CLOSING, ARRIVING -> EnchiridionBookAnimatable.ReadableSurfaceTarget.none();
+            case IDLE_BACK, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
                     EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE,
                     true
             );
-            case FLIPPING_FRONT, FLIPPING_FRONT_TO_ORIGIN,
-                    IDLE_BACK, FLIPPING_BACK, FLIPPING_BACK_TO_ORIGIN,
-                    IDLE_SKILLTREE, IDLE_FRONT_SKILLTREE, FLIPPING_NEXT_SKILLTREE, FLIPPING_PREV_SKILLTREE, RIFFLING_NEXT_SKILLTREE, RIFFLING_PREV_SKILLTREE,
-                    CLOSED, CLOSING, ARRIVING -> EnchiridionBookAnimatable.ReadableSurfaceTarget.none();
             default -> new EnchiridionBookAnimatable.ReadableSurfaceTarget(
                     EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_BONE,
                     true

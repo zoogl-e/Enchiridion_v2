@@ -5,18 +5,21 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.zoogle.enchiridion.api.BookTrackedRegion;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookFrontCoverCardState;
 import net.zoogle.enchiridion.api.BookPageSide;
+import net.zoogle.enchiridion.api.BookSection;
 import net.zoogle.enchiridion.client.audio.PostBindAmbientScheduler;
 import net.zoogle.enchiridion.client.levelrpg.bridge.LevelRpgJournalInteractionBridge;
 import net.zoogle.enchiridion.client.levelrpg.archetype.ArchetypeReelState;
 import net.zoogle.enchiridion.client.levelrpg.archetype.JournalArchetypeChoice;
 import net.zoogle.enchiridion.client.levelrpg.archetype.LevelRpgIntroFlowAdapter;
 import net.zoogle.enchiridion.client.levelrpg.archetype.ReelFlowController;
+import net.zoogle.enchiridion.api.BookContentMode;
 import net.zoogle.enchiridion.client.levelrpg.projection.SkillTreeProjectionData;
 
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
@@ -35,6 +38,8 @@ public final class BookScreen extends Screen {
     private final BookCinematicManager cinematicManager = new BookCinematicManager();
     private final SkillTreeProjectionController projectionController = new SkillTreeProjectionController();
     private final ArchetypeReelCoordinator archetypeCoordinator = new ArchetypeReelCoordinator();
+    private ResourceLocation lastObservedActiveSoloBountyId;
+    private boolean lastObservedActiveSoloBountyObjectiveMet;
     
     private Component overlayTitle;
     private boolean shouldRenderArchetypeReel() {
@@ -58,7 +63,14 @@ public final class BookScreen extends Screen {
         if (viewState.displayedSpread() == null || viewState.displayedSpreadIndex() != controller.spreadIndex()) {
             viewState.syncDisplayedSpreadFromController(controller);
         }
-        sceneRenderer.prewarmPageTextures(viewState.displayedSpread(), viewState.displayedSpreadIndex());
+        sceneRenderer.prewarmPageTextures(
+                viewState.displayedSpread(),
+                controller.context().contentSession().mode(),
+                controller.activeSection(),
+                viewState.displayedSpreadIndex(),
+                controller.activeSection() == BookSection.FRONT_SPECIAL
+                        || controller.activeSection() == BookSection.BACK_SPECIAL
+        );
     }
     @Override
     public boolean isPauseScreen() {
@@ -73,6 +85,8 @@ public final class BookScreen extends Screen {
         overlayTitle = controller.definition().provider().displayTitle(controller.context(), controller.definition().title());
         viewState.updateTextTransition(controller);
         viewState.updateProjectionFocusOffset(controller);
+        viewState.updateBountyModeTransition(controller);
+        refreshBountyModeContentIfStateChanged();
         if (controller.isClosed() && controller.shouldExitWhenClosed()) {
             super.onClose();
         }
@@ -167,7 +181,8 @@ public final class BookScreen extends Screen {
                 viewState,
                 keyCode,
                 () -> super.keyPressed(keyCode, scanCode, modifiers),
-                super::onClose
+                super::onClose,
+                this::beginUserClosing
         );
     }
     @Override
@@ -180,10 +195,11 @@ public final class BookScreen extends Screen {
     @Override
     public void onClose() {
         if (controller.isClosed() || controller.isArriving() || controller.isClosing()) {
+            controller.context().contentSession().setMode(BookContentMode.READING);
             super.onClose();
             return;
         }
-        controller.beginUserClosing();
+        beginUserClosing();
     }
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -271,6 +287,9 @@ public final class BookScreen extends Screen {
     }
     private void preparePresentation(int mouseX, int mouseY) {
         viewState.setClosedBookHovered(controller.isClosed() && sceneRenderer.isClosedBookHovered(viewState.layout(), mouseX, mouseY));
+        boolean bookmarkAllowedToShow = isBookStableForBookmark();
+        boolean bookmarkHovered = bookmarkAllowedToShow && sceneRenderer.isBookmarkHovering(viewState.layout(), mouseX, mouseY);
+        viewState.updateBookmarkAnimation(bookmarkAllowedToShow, bookmarkHovered);
         sceneRenderer.preparePresentation(
                 viewState.layout(),
                 effectiveVisualState(),
@@ -288,6 +307,11 @@ public final class BookScreen extends Screen {
     }
     private BookInteractionResolver.Resolution resolveInteraction(int mouseX, int mouseY) {
         if (projectionController.isActive()) {
+            BookInteractionResolver.Resolution interaction = BookInteractionResolver.Resolution.empty();
+            viewState.setInteraction(interaction);
+            return interaction;
+        }
+        if (viewState.bountyTransitionRunning()) {
             BookInteractionResolver.Resolution interaction = BookInteractionResolver.Resolution.empty();
             viewState.setInteraction(interaction);
             return interaction;
@@ -319,6 +343,10 @@ public final class BookScreen extends Screen {
                 viewState.layout(),
                 viewState.displayedSpread(),
                 viewState.displayedSpreadIndex(),
+                controller.context().contentSession().mode(),
+                controller.activeSection(),
+                controller.activeSection() == BookSection.FRONT_SPECIAL
+                        || controller.activeSection() == BookSection.BACK_SPECIAL,
                 effectiveVisualState(),
                 controller.animationProgress(),
                 controller.projectionProgress(),
@@ -330,14 +358,25 @@ public final class BookScreen extends Screen {
                 interactionResolver.hoveredInteractiveNode(interaction, BookPageSide.RIGHT),
                 mouseX,
                 mouseY,
-                viewState.textAlpha(),
+                viewState.effectiveContentAlpha(),
                 partialTick,
                 currentFrontCoverCardState(),
                 reelStateForPresentation(),
                 viewState.closedBookHovered(),
                 viewState.inspectYaw(),
-                viewState.inspectPitch()
+                viewState.inspectPitch(),
+                viewState.bookmarkAlpha(),
+                viewState.bookmarkTuckAmount(),
+                viewState.bookmarkPopAmount(),
+                viewState.bookmarkHoverAmount(),
+                viewState.bookmarkClickAmount()
         );
+    }
+
+    private boolean isBookStableForBookmark() {
+        return !projectionController.isActive()
+                && !shouldRenderArchetypeReel()
+                && controller.isBookmarkInputAllowed();
     }
     private BookFrontCoverCardState currentFrontCoverCardState() {
         BookFrontCoverCardState base = controller.frontCoverCardState();
@@ -369,6 +408,39 @@ public final class BookScreen extends Screen {
         }
         projectionController.close();
         return true;
+    }
+
+    public void beginReturnFromBountyOffers() {
+        viewState.beginReturnFromBountyTransition();
+    }
+
+    private void beginUserClosing() {
+        controller.resetDocumentModeForBookClose();
+        viewState.cancelBountyTransitions();
+        controller.refreshCurrentSpread();
+        viewState.refreshDisplayedSpread(controller);
+        controller.beginUserClosing();
+    }
+
+    public void refreshJournalSpreadNow() {
+        controller.refreshCurrentSpread();
+        viewState.refreshDisplayedSpread(controller);
+    }
+
+    private void refreshBountyModeContentIfStateChanged() {
+        ResourceLocation activeBountyId = LevelRpgJournalInteractionBridge.activeSoloBountyId(controller.context());
+        boolean objectiveMet = LevelRpgJournalInteractionBridge.isActiveSoloBountyObjectiveMet(controller.context());
+        boolean changed = !java.util.Objects.equals(lastObservedActiveSoloBountyId, activeBountyId)
+                || lastObservedActiveSoloBountyObjectiveMet != objectiveMet;
+        lastObservedActiveSoloBountyId = activeBountyId;
+        lastObservedActiveSoloBountyObjectiveMet = objectiveMet;
+        if (!changed) {
+            return;
+        }
+        if (!controller.isBountyDocumentMode() || viewState.bountyTransitionRunning()) {
+            return;
+        }
+        viewState.beginBountyContentRefreshTransition();
     }
     private InfoPanelLayoutService.PanelRect staticArchetypeReelPanelRect() {
         return infoPanelLayoutService.resolveStaticReelArchetypePanelRect(width, height);

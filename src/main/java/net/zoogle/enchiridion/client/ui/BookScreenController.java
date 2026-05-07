@@ -3,14 +3,21 @@ package net.zoogle.enchiridion.client.ui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
+import net.zoogle.enchiridion.api.BookContentMode;
 import net.zoogle.enchiridion.api.BookContext;
 import net.zoogle.enchiridion.api.BookDefinition;
 import net.zoogle.enchiridion.api.BookFrontCoverCardState;
+import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookProjectionView;
+import net.zoogle.enchiridion.api.BookSection;
 import net.zoogle.enchiridion.api.BookSpread;
+import net.zoogle.enchiridion.api.BookTrackedRegion;
 import net.zoogle.enchiridion.client.anim.BookAnimController;
 import net.zoogle.enchiridion.client.anim.BookAnimState;
+import net.zoogle.enchiridion.client.levelrpg.bridge.LevelRpgJournalInteractionBridge;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public final class BookScreenController implements BookProjectionController.ProjectionSpreadNavigator {
     private final BookDefinition definition;
@@ -22,6 +29,9 @@ public final class BookScreenController implements BookProjectionController.Proj
     private BookSpread currentSpread;
     private boolean exitWhenClosed;
     private boolean resetSpreadOnNextOpen;
+    private int storedReadingSpreadIndex;
+    private BookSection activeSection = BookSection.INTERIOR;
+    private BookSection pendingSectionAfterFlip;
 
     public BookScreenController(BookDefinition definition, BookContext context) {
         this(definition, context, NoopIntroFlowPort.INSTANCE);
@@ -31,54 +41,47 @@ public final class BookScreenController implements BookProjectionController.Proj
         this.definition = definition;
         this.context = context;
         this.introFlow = introFlow;
+        context.contentSession().setMode(BookContentMode.READING);
         int initialSpreadIndex = Math.clamp(definition.provider().initialSpreadIndex(context), 0, maxSpreadIndex());
+        this.storedReadingSpreadIndex = initialSpreadIndex;
         this.animController.setCurrentSpread(initialSpreadIndex);
         this.currentSpread = definition.provider().getSpread(context, initialSpreadIndex);
         this.projectionController = new BookProjectionController(definition, context);
+        updateActiveSectionFromCurrentSpread();
         this.animController.beginArrival();
     }
 
     public void tick() {
         int before = animController.getCurrentSpread();
         animController.tick();
+        applyPendingSectionTransitionIfReady();
         if (animController.getCurrentSpread() != before) {
             reloadSpread();
         }
         projectionController.tick();
         if (introFlow.tick(context)) {
+            context.contentSession().setMode(BookContentMode.READING);
             int initialSpreadIndex = Math.clamp(definition.provider().initialSpreadIndex(context), 0, maxSpreadIndex());
             if (animController.getCurrentSpread() != initialSpreadIndex) {
                 animController.setCurrentSpread(initialSpreadIndex);
             }
+            storedReadingSpreadIndex = initialSpreadIndex;
             projectionController.closeProjection();
             reloadSpread();
         } else {
             clampSpreadToProvider();
+            if (pendingSectionAfterFlip == null) {
+                updateActiveSectionFromCurrentSpread();
+            }
         }
     }
 
     public void nextPage() {
-        boolean moved = shouldUseFrontFlipToOrigin()
-                ? animController.requestFrontSpreadToOrigin()
-                : shouldUseBackFlip()
-                ? animController.requestBackSpread()
-                : animController.requestNextSpread(maxSpreadIndex());
-        if (moved) {
-            playPageTurnSound();
-            // texture swap happens when animation crosses its midpoint
-        }
+        requestNextSpread(maxSpreadIndex());
     }
 
     public void previousPage() {
-        boolean moved = shouldUseFrontFlip()
-                ? animController.requestFrontSpread()
-                : shouldUseBackFlipToOrigin()
-                ? animController.requestBackSpreadToOrigin()
-                : animController.requestPreviousSpread();
-        if (moved) {
-            playPageTurnSound();
-            // texture swap happens when animation crosses its midpoint
-        }
+        requestPreviousSpread();
     }
 
     public void nextSpread() {
@@ -90,7 +93,7 @@ public final class BookScreenController implements BookProjectionController.Proj
     }
 
     public boolean jumpToSpread(int spreadIndex) {
-        if (isProjectionVisible()) {
+        if (isProjectionVisible() || isBountyDocumentMode()) {
             return false;
         }
         boolean jumped = animController.requestJumpToSpread(spreadIndex, maxSpreadIndex());
@@ -110,10 +113,10 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     public boolean beginClosing() {
         if (animController.getState() == BookAnimState.IDLE_OPEN) {
-            if (definition.provider().isFrontSpread(context, animController.getCurrentSpread())) {
+            if (activeSection == BookSection.FRONT_SPECIAL) {
                 return animController.requestClose(BookAnimState.CLOSING_FRONT);
             }
-            if (definition.provider().isBackSpread(context, animController.getCurrentSpread())) {
+            if (activeSection == BookSection.BACK_SPECIAL) {
                 return animController.requestClose(BookAnimState.CLOSING_BACK);
             }
         }
@@ -121,15 +124,17 @@ public final class BookScreenController implements BookProjectionController.Proj
     }
 
     public boolean beginOpening() {
+        context.contentSession().setMode(BookContentMode.READING);
         int initialSpreadIndex = Math.clamp(definition.provider().initialSpreadIndex(context), 0, maxSpreadIndex());
         if (resetSpreadOnNextOpen && animController.getCurrentSpread() != initialSpreadIndex) {
             animController.setCurrentSpread(initialSpreadIndex);
+            storedReadingSpreadIndex = initialSpreadIndex;
             reloadSpread();
         }
         BookAnimState openingState = BookAnimState.OPENING;
-        if (definition.provider().isFrontSpread(context, animController.getCurrentSpread())) {
+        if (activeSection == BookSection.FRONT_SPECIAL) {
             openingState = BookAnimState.OPENING_FRONT;
-        } else if (definition.provider().isBackSpread(context, animController.getCurrentSpread())) {
+        } else if (activeSection == BookSection.BACK_SPECIAL) {
             openingState = BookAnimState.OPENING_BACK;
         }
         exitWhenClosed = false;
@@ -139,6 +144,96 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     public BookSpread currentSpread() {
         return currentSpread;
+    }
+
+    public BookSpread currentDisplayedSpread() {
+        if (activeSection == BookSection.FRONT_SPECIAL
+                || pendingSectionAfterFlip == BookSection.FRONT_SPECIAL) {
+            return definition.provider().getSpecialSectionSpread(context, BookSection.FRONT_SPECIAL);
+        }
+        if (activeSection == BookSection.BACK_SPECIAL
+                || pendingSectionAfterFlip == BookSection.BACK_SPECIAL) {
+            return definition.provider().getSpecialSectionSpread(context, BookSection.BACK_SPECIAL);
+        }
+        return currentSpread;
+    }
+
+    public List<BookInteractiveRegion> currentInteractiveRegions(int displayedSpreadIndex) {
+        if (activeSection == BookSection.FRONT_SPECIAL
+                || pendingSectionAfterFlip == BookSection.FRONT_SPECIAL) {
+            return definition.provider().specialSectionInteractiveRegions(context, BookSection.FRONT_SPECIAL);
+        }
+        if (activeSection == BookSection.BACK_SPECIAL
+                || pendingSectionAfterFlip == BookSection.BACK_SPECIAL) {
+            return definition.provider().specialSectionInteractiveRegions(context, BookSection.BACK_SPECIAL);
+        }
+        return definition.provider().interactiveRegions(context, displayedSpreadIndex);
+    }
+
+    public List<BookTrackedRegion> currentTrackedInteractiveRegions(int displayedSpreadIndex) {
+        if (activeSection == BookSection.FRONT_SPECIAL
+                || pendingSectionAfterFlip == BookSection.FRONT_SPECIAL) {
+            return definition.provider().specialSectionTrackedInteractiveRegions(context, BookSection.FRONT_SPECIAL);
+        }
+        if (activeSection == BookSection.BACK_SPECIAL
+                || pendingSectionAfterFlip == BookSection.BACK_SPECIAL) {
+            return definition.provider().specialSectionTrackedInteractiveRegions(context, BookSection.BACK_SPECIAL);
+        }
+        return definition.provider().trackedInteractiveRegions(context, displayedSpreadIndex);
+    }
+
+    public BookSection activeSection() {
+        return activeSection;
+    }
+
+    public void setActiveSection(BookSection section) {
+        this.activeSection = section != null ? section : BookSection.INTERIOR;
+    }
+
+    public void enterBountyDocumentMode() {
+        storedReadingSpreadIndex = animController.getCurrentSpread();
+        context.contentSession().setMode(BookContentMode.BOUNTY);
+        pendingSectionAfterFlip = null;
+        setActiveSection(BookSection.INTERIOR);
+        animController.setCurrentSpread(0);
+        clampSpreadToProvider();
+        reloadSpread();
+    }
+
+    public void exitBountyDocumentMode() {
+        context.contentSession().setMode(BookContentMode.READING);
+        pendingSectionAfterFlip = null;
+        setActiveSection(BookSection.INTERIOR);
+        animController.setCurrentSpread(storedReadingSpreadIndex);
+        clampSpreadToProvider();
+        reloadSpread();
+    }
+
+    /**
+     * Midpoint of profile-sync content refresh while in the bounty document (claim / abandon / completion).
+     */
+    public void onBountyProfileSyncRefreshMidpoint() {
+        pendingSectionAfterFlip = null;
+        setActiveSection(BookSection.INTERIOR);
+        animController.setCurrentSpread(0);
+        clampSpreadToProvider();
+        reloadSpread();
+    }
+
+    public void resetDocumentModeForBookClose() {
+        if (context.contentSession().mode() != BookContentMode.BOUNTY) {
+            return;
+        }
+        context.contentSession().setMode(BookContentMode.READING);
+        pendingSectionAfterFlip = null;
+        setActiveSection(BookSection.INTERIOR);
+        animController.setCurrentSpread(storedReadingSpreadIndex);
+        clampSpreadToProvider();
+        reloadSpread();
+    }
+
+    public boolean isBountyDocumentMode() {
+        return context.contentSession().isBountyDocument();
     }
 
     public BookAnimState state() {
@@ -152,12 +247,12 @@ public final class BookScreenController implements BookProjectionController.Proj
                 || animController.getState() == BookAnimState.FLIPPING_BACK_TO_ORIGIN) {
             return animController.getState();
         }
-        if (definition.provider().isFrontSpread(context, animController.getCurrentSpread())
+        if (activeSection == BookSection.FRONT_SPECIAL
                 && isOpenReadable()
                 && animController.getState() == BookAnimState.IDLE_OPEN) {
             return BookAnimState.IDLE_FRONT;
         }
-        if (definition.provider().isBackSpread(context, animController.getCurrentSpread())
+        if (activeSection == BookSection.BACK_SPECIAL
                 && isOpenReadable()
                 && animController.getState() == BookAnimState.IDLE_OPEN) {
             return BookAnimState.IDLE_BACK;
@@ -206,6 +301,16 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     public boolean isInteractionStableReadable() {
         return animController.getState() == BookAnimState.IDLE_OPEN && !isProjectionVisible();
+    }
+
+    public boolean isBookmarkInputAllowed() {
+        if (isProjectionVisible() || activeSection != BookSection.INTERIOR || pendingSectionAfterFlip != null) {
+            return false;
+        }
+        return switch (visualState()) {
+            case IDLE_OPEN, FLIPPING_NEXT, FLIPPING_PREV -> true;
+            default -> false;
+        };
     }
 
     public boolean isClosed() {
@@ -288,6 +393,9 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     void reloadSpread() {
         currentSpread = definition.provider().getSpread(context, animController.getCurrentSpread());
+        if (pendingSectionAfterFlip == null) {
+            updateActiveSectionFromCurrentSpread();
+        }
     }
 
     public void refreshCurrentSpread() {
@@ -372,34 +480,38 @@ public final class BookScreenController implements BookProjectionController.Proj
         }
     }
 
-    private boolean shouldUseFrontFlip() {
-        if (animController.getState() != BookAnimState.IDLE_OPEN || animController.getCurrentSpread() <= 0) {
-            return false;
+    private void updateActiveSectionFromCurrentSpread() {
+        if (isBountyDocumentMode()) {
+            setActiveSection(BookSection.INTERIOR);
+            return;
         }
-        int targetSpread = animController.getCurrentSpread() - 1;
-        return definition.provider().isFrontSpread(context, targetSpread)
-                && !definition.provider().isFrontSpread(context, animController.getCurrentSpread());
-    }
-
-    private boolean shouldUseFrontFlipToOrigin() {
-        return animController.getState() == BookAnimState.IDLE_OPEN
-                && definition.provider().isFrontSpread(context, animController.getCurrentSpread())
-                && animController.getCurrentSpread() < maxSpreadIndex();
-    }
-
-    private boolean shouldUseBackFlip() {
-        if (animController.getState() != BookAnimState.IDLE_OPEN || animController.getCurrentSpread() >= maxSpreadIndex()) {
-            return false;
+        if (activeSection == BookSection.FRONT_SPECIAL && animController.getCurrentSpread() == 0) {
+            return;
         }
-        int targetSpread = animController.getCurrentSpread() + 1;
-        return definition.provider().isBackSpread(context, targetSpread)
-                && !definition.provider().isBackSpread(context, animController.getCurrentSpread());
+        if (activeSection == BookSection.BACK_SPECIAL && animController.getCurrentSpread() == maxSpreadIndex()) {
+            return;
+        }
+        setActiveSection(definition.provider().getSectionForSpread(context, animController.getCurrentSpread()));
     }
 
-    private boolean shouldUseBackFlipToOrigin() {
-        return animController.getState() == BookAnimState.IDLE_OPEN
-                && definition.provider().isBackSpread(context, animController.getCurrentSpread())
-                && animController.getCurrentSpread() > 0;
+    private void applyPendingSectionTransitionIfReady() {
+        if (pendingSectionAfterFlip == null) {
+            return;
+        }
+        BookAnimState state = animController.getState();
+        if (state != BookAnimState.FLIPPING_FRONT
+                && state != BookAnimState.FLIPPING_FRONT_TO_ORIGIN
+                && state != BookAnimState.FLIPPING_BACK
+                && state != BookAnimState.FLIPPING_BACK_TO_ORIGIN) {
+            pendingSectionAfterFlip = null;
+            return;
+        }
+        if (animController.getNormalizedProgress() < net.zoogle.enchiridion.client.anim.BookAnimationSpec.flipPageSwapProgress()) {
+            return;
+        }
+        setActiveSection(pendingSectionAfterFlip);
+        reloadSpread();
+        pendingSectionAfterFlip = null;
     }
 
     @Override
@@ -409,11 +521,29 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     @Override
     public boolean requestNextSpread(int maxSpreadIndex) {
-        boolean advanced = shouldUseFrontFlipToOrigin()
-                ? animController.requestFrontSpreadToOrigin()
-                : shouldUseBackFlip()
-                ? animController.requestBackSpread()
-                : animController.requestNextSpread(maxSpreadIndex());
+        if (isBountyDocumentMode()) {
+            if (LevelRpgJournalInteractionBridge.activeSoloBountyId(context) != null) {
+                return false;
+            }
+            boolean advanced = animController.requestNextSpread(maxSpreadIndex());
+            if (advanced) {
+                playPageTurnSound();
+            }
+            return advanced;
+        }
+        if (activeSection == BookSection.FRONT_SPECIAL) {
+            return requestSectionFlip(BookSection.INTERIOR, BookAnimState.FLIPPING_FRONT_TO_ORIGIN);
+        }
+        if (activeSection == BookSection.BACK_SPECIAL) {
+            return false;
+        }
+        if (activeSection == BookSection.INTERIOR
+                && animController.getState() == BookAnimState.IDLE_OPEN
+                && animController.getCurrentSpread() == maxSpreadIndex()
+                && definition.provider().hasSpecialSection(context, BookSection.BACK_SPECIAL)) {
+            return requestSectionFlip(BookSection.BACK_SPECIAL, BookAnimState.FLIPPING_BACK);
+        }
+        boolean advanced = animController.requestNextSpread(maxSpreadIndex());
         if (advanced) {
             playPageTurnSound();
         }
@@ -422,11 +552,29 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     @Override
     public boolean requestPreviousSpread() {
-        boolean retreated = shouldUseFrontFlip()
-                ? animController.requestFrontSpread()
-                : shouldUseBackFlipToOrigin()
-                ? animController.requestBackSpreadToOrigin()
-                : animController.requestPreviousSpread();
+        if (isBountyDocumentMode()) {
+            if (LevelRpgJournalInteractionBridge.activeSoloBountyId(context) != null) {
+                return false;
+            }
+            boolean retreated = animController.requestPreviousSpread();
+            if (retreated) {
+                playPageTurnSound();
+            }
+            return retreated;
+        }
+        if (activeSection == BookSection.BACK_SPECIAL) {
+            return requestSectionFlip(BookSection.INTERIOR, BookAnimState.FLIPPING_BACK_TO_ORIGIN);
+        }
+        if (activeSection == BookSection.FRONT_SPECIAL) {
+            return false;
+        }
+        if (activeSection == BookSection.INTERIOR
+                && animController.getState() == BookAnimState.IDLE_OPEN
+                && animController.getCurrentSpread() == 0
+                && definition.provider().hasSpecialSection(context, BookSection.FRONT_SPECIAL)) {
+            return requestSectionFlip(BookSection.FRONT_SPECIAL, BookAnimState.FLIPPING_FRONT);
+        }
+        boolean retreated = animController.requestPreviousSpread();
         if (retreated) {
             playPageTurnSound();
         }
@@ -435,6 +583,9 @@ public final class BookScreenController implements BookProjectionController.Proj
 
     @Override
     public boolean requestDirectedRiffleToSpread(int targetSpread, int maxSpreadIndex, boolean reverseDirection) {
+        if (isBountyDocumentMode()) {
+            return false;
+        }
         boolean riffled = animController.requestDirectedRiffleToSpread(targetSpread, maxSpreadIndex(), reverseDirection);
         if (riffled) {
             playPageTurnSound();
@@ -453,5 +604,31 @@ public final class BookScreenController implements BookProjectionController.Proj
             return;
         }
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0f));
+    }
+
+    private boolean requestSectionFlip(BookSection targetSection, BookAnimState flipState) {
+        if (animController.getState() != BookAnimState.IDLE_OPEN) {
+            return false;
+        }
+        pendingSectionAfterFlip = targetSection;
+        boolean flipped = switch (flipState) {
+            case FLIPPING_FRONT -> animController.requestFrontSpread();
+            case FLIPPING_FRONT_TO_ORIGIN -> animController.requestFrontSpreadToOrigin();
+            case FLIPPING_BACK -> {
+                animController.setCurrentSpread(maxSpreadIndex());
+                yield animController.requestBackSpread();
+            }
+            case FLIPPING_BACK_TO_ORIGIN -> {
+                animController.setCurrentSpread(maxSpreadIndex());
+                yield animController.requestBackSpreadToOrigin();
+            }
+            default -> false;
+        };
+        if (flipped) {
+            playPageTurnSound();
+        } else {
+            pendingSectionAfterFlip = null;
+        }
+        return flipped;
     }
 }

@@ -26,6 +26,17 @@ final class BookDebugOverlayRenderer {
             return;
         }
 
+        drawDebugLine(
+                graphics,
+                font,
+                "book state: section=" + controller.activeSection()
+                        + " mode=" + controller.context().contentSession().mode()
+                        + " spread=" + controller.spreadIndex(),
+                8,
+                8
+        );
+        drawBookmarkHitboxDebug(graphics, font, viewState, sceneRenderer);
+
         if (viewState.pageInteractionDebugState() != null) {
             BookInteractionResolver.PageDebugSide debugCursorSide = debugCursorSide(viewState.pageInteractionDebugState(), viewState.hoveredInteractiveTarget());
             drawPageSideDebug(graphics, font, controller, viewState, sceneRenderer, viewState.pageInteractionDebugState().left(), 0xCC4FD6A8, 0xFFB9FFF0, debugCursorSide, mouseX, mouseY);
@@ -157,6 +168,30 @@ final class BookDebugOverlayRenderer {
         graphics.fill(x0, y1 - 1, x1, y1, color);
         graphics.fill(x0, y0, x0 + 1, y1, color);
         graphics.fill(x1 - 1, y0, x1, y1, color);
+    }
+
+    private void drawBookmarkHitboxDebug(
+            GuiGraphics graphics,
+            Font font,
+            BookViewState viewState,
+            BookSceneRenderer sceneRenderer
+    ) {
+        if (viewState.layout() == null) {
+            return;
+        }
+        // Keep this debug-only and tied to the same screen-space rect used by hover logic.
+        BookSceneRenderer.ScreenRect bookmarkRect = sceneRenderer.bookmarkHitbox(viewState.layout());
+        if (bookmarkRect == null) {
+            return;
+        }
+        if (viewState.bookmarkAlpha() <= 0.02f && !viewState.bookmarkInteractable()) {
+            return;
+        }
+        int color = viewState.bookmarkHovered() ? 0xEE4DFFB8 : 0xCC4D9DFF;
+        drawRectOutline(graphics, bookmarkRect, color);
+        int labelX = Math.round(bookmarkRect.x());
+        int labelY = Math.round(bookmarkRect.y()) - 10;
+        graphics.drawString(font, "bookmark hitbox", labelX, labelY, color, false);
     }
 
     private void drawProjectedNodeCenter(GuiGraphics graphics, PageInteractiveNode node, int color) {

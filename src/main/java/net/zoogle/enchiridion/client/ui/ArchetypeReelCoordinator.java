@@ -191,7 +191,7 @@ public final class ArchetypeReelCoordinator {
 
     public void updateHover(double mouseX, double mouseY, BookViewState viewState, BookSceneRenderer sceneRenderer) {
         Integer hoveredIndex = sceneRenderer.hoveredArchetypeReelCardIndex(viewState.layout(), reelState, mouseX, mouseY);
-        reelState.setHoveredIndex(hoveredIndex);
+        reelState.setHoveredIndex(hoveredIndex == null ? -1 : hoveredIndex);
     }
 
     public ArchetypeReelState reelStateForPresentation() {

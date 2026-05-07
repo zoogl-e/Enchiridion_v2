@@ -78,7 +78,7 @@ public final class BookAnimationSpec {
         clips.put(BookAnimState.OPENING_BACK, new Clip("animation.model.open_back", FRONT_BACK_OPEN_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));
         clips.put(BookAnimState.IDLE_OPEN, new Clip("animation.model.idle_open", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
         clips.put(BookAnimState.IDLE_FRONT, new Clip("animation.model.idle_front", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
-        clips.put(BookAnimState.IDLE_BACK, new Clip("animation.model.idle_open", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, false));
+        clips.put(BookAnimState.IDLE_BACK, new Clip("animation.model.idle_back", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
         clips.put(BookAnimState.IDLE_SKILLTREE, new Clip("animation.model.idle_skilltree", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
         clips.put(BookAnimState.IDLE_FRONT_SKILLTREE, new Clip("animation.model.idle_front_skilltree", IDLE_LOOP_DURATION_SECONDS, PlaybackMode.LOOP, true));
         clips.put(BookAnimState.FLIPPING_FRONT, new Clip("animation.model.flip_front", FRONT_FLIP_DURATION_SECONDS, PlaybackMode.HOLD_ON_LAST_FRAME, true));

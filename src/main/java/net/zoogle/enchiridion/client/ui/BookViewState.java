@@ -3,7 +3,6 @@ package net.zoogle.enchiridion.client.ui;
 import net.minecraft.network.chat.Component;
 import net.zoogle.enchiridion.api.BookPageSide;
 import net.zoogle.enchiridion.api.BookSpread;
-import net.zoogle.enchiridion.client.anim.BookAnimState;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 import net.zoogle.enchiridion.client.render.BookSceneRenderer;
 
@@ -18,6 +17,13 @@ public final class BookViewState {
     private static final float TEXT_ALPHA_EPSILON = 0.01f;
     private static final float INSPECT_YAW_PER_PIXEL = 0.45f;
     private static final float INSPECT_PITCH_PER_PIXEL = 0.35f;
+    private static final float BOOKMARK_TUCK_LERP = 0.45f;
+    private static final float BOOKMARK_ALPHA_LERP = 0.18f;
+    private static final float BOOKMARK_POP_LERP = 0.2f;
+    private static final float BOOKMARK_HOVER_LERP = 0.32f;
+    private static final float BOOKMARK_CLICK_DECAY = 0.16f;
+    private static final float BOOKMARK_INTERACTABLE_VISIBILITY_THRESHOLD = 0.82f;
+    private static final float BOUNTY_TRANSITION_SPEED = 0.24f;
 
     private BookLayout layout;
     private BookSpread displayedSpread;
@@ -38,6 +44,15 @@ public final class BookViewState {
     private float currentProjectionFocusOffset;
     private double lastInspectMouseX;
     private double lastInspectMouseY;
+    private float bookmarkAlpha;
+    private float bookmarkTuckAmount = 1.0f;
+    private float bookmarkPopAmount;
+    private float bookmarkHoverAmount;
+    private float bookmarkClickAmount;
+    private boolean bookmarkHovered;
+    private boolean bookmarkInteractable;
+    private float bountyModeAlpha = 1.0f;
+    private BountyTransitionPhase bountyTransitionPhase = BountyTransitionPhase.NONE;
 
     void initLayout(int width, int height) {
         layout = BookLayout.fromScreen(width, height);
@@ -51,12 +66,100 @@ public final class BookViewState {
         currentProjectionFocusOffset += (targetProjectionFocusOffset(controller) - currentProjectionFocusOffset) * 0.2f;
     }
 
+    void beginBountyOfferTransition() {
+        if (bountyTransitionPhase != BountyTransitionPhase.NONE) {
+            return;
+        }
+        bountyTransitionPhase = BountyTransitionPhase.FADING_OUT_TO_BOUNTY;
+    }
+
+    void beginReturnFromBountyTransition() {
+        if (bountyTransitionPhase != BountyTransitionPhase.NONE) {
+            return;
+        }
+        bountyTransitionPhase = BountyTransitionPhase.FADING_OUT_TO_READING;
+    }
+
+    void beginBountyContentRefreshTransition() {
+        if (bountyTransitionPhase != BountyTransitionPhase.NONE) {
+            return;
+        }
+        bountyTransitionPhase = BountyTransitionPhase.FADING_OUT_TO_BOUNTY_REFRESH;
+    }
+
+    void cancelBountyTransitions() {
+        bountyTransitionPhase = BountyTransitionPhase.NONE;
+        bountyModeAlpha = 1.0f;
+    }
+
+    void updateBountyModeTransition(BookScreenController controller) {
+        switch (bountyTransitionPhase) {
+            case NONE -> {
+                bountyModeAlpha = 1.0f;
+            }
+            case FADING_OUT_TO_BOUNTY -> {
+                bountyModeAlpha = Math.max(0.0f, bountyModeAlpha - BOUNTY_TRANSITION_SPEED);
+                if (bountyModeAlpha <= 0.01f) {
+                    controller.enterBountyDocumentMode();
+                    refreshDisplayedSpread(controller);
+                    bountyTransitionPhase = BountyTransitionPhase.FADING_IN;
+                }
+            }
+            case FADING_OUT_TO_READING -> {
+                bountyModeAlpha = Math.max(0.0f, bountyModeAlpha - BOUNTY_TRANSITION_SPEED);
+                if (bountyModeAlpha <= 0.01f) {
+                    controller.exitBountyDocumentMode();
+                    refreshDisplayedSpread(controller);
+                    bountyTransitionPhase = BountyTransitionPhase.FADING_IN;
+                }
+            }
+            case FADING_OUT_TO_BOUNTY_REFRESH -> {
+                bountyModeAlpha = Math.max(0.0f, bountyModeAlpha - BOUNTY_TRANSITION_SPEED);
+                if (bountyModeAlpha <= 0.01f) {
+                    controller.onBountyProfileSyncRefreshMidpoint();
+                    refreshDisplayedSpread(controller);
+                    bountyTransitionPhase = BountyTransitionPhase.FADING_IN;
+                }
+            }
+            case FADING_IN -> {
+                bountyModeAlpha = Math.min(1.0f, bountyModeAlpha + BOUNTY_TRANSITION_SPEED);
+                if (bountyModeAlpha >= 0.99f) {
+                    bountyModeAlpha = 1.0f;
+                    bountyTransitionPhase = BountyTransitionPhase.NONE;
+                }
+            }
+        }
+    }
+
+    void updateBookmarkAnimation(boolean bookmarkAllowedToShow, boolean hovered) {
+        float targetAlpha = bookmarkAllowedToShow ? 1.0f : 0.0f;
+        float targetTuck = bookmarkAllowedToShow ? 0.0f : 1.0f;
+        float targetPop = bookmarkAllowedToShow ? 1.0f : 0.0f;
+        float targetHover = bookmarkAllowedToShow && hovered ? 1.0f : 0.0f;
+
+        // Tuck quickly during motion to avoid clipping with moving pages/covers.
+        bookmarkTuckAmount += (targetTuck - bookmarkTuckAmount) * BOOKMARK_TUCK_LERP;
+        bookmarkAlpha += (targetAlpha - bookmarkAlpha) * BOOKMARK_ALPHA_LERP;
+        bookmarkPopAmount += (targetPop - bookmarkPopAmount) * BOOKMARK_POP_LERP;
+        bookmarkHoverAmount += (targetHover - bookmarkHoverAmount) * BOOKMARK_HOVER_LERP;
+        bookmarkClickAmount = Math.max(0.0f, bookmarkClickAmount - BOOKMARK_CLICK_DECAY);
+        bookmarkHovered = bookmarkAllowedToShow && hovered;
+        bookmarkInteractable = bookmarkAlpha >= BOOKMARK_INTERACTABLE_VISIBILITY_THRESHOLD
+                && bookmarkPopAmount >= BOOKMARK_INTERACTABLE_VISIBILITY_THRESHOLD
+                && bookmarkTuckAmount <= 0.2f
+                && bookmarkAllowedToShow;
+    }
+
+    void triggerBookmarkClickPulse() {
+        bookmarkClickAmount = 1.0f;
+    }
+
     void updateTextTransition(BookScreenController controller) {
         if (displayedSpread == null) {
             syncDisplayedSpreadFromController(controller);
         }
 
-        targetSpread = controller.currentSpread();
+        targetSpread = controller.currentDisplayedSpread();
         targetSpreadIndex = controller.spreadIndex();
 
         boolean flipping = switch (controller.state()) {
@@ -105,14 +208,16 @@ public final class BookViewState {
                 textAlpha = 0.0f;
             }
 
-            if (controller.animationProgress() >= 0.5f && displayedSpreadIndex != targetSpreadIndex && textAlpha <= TEXT_ALPHA_EPSILON) {
+            if (controller.animationProgress() >= 0.5f
+                    && (displayedSpreadIndex != targetSpreadIndex || displayedSpread != targetSpread)
+                    && textAlpha <= TEXT_ALPHA_EPSILON) {
                 displayedSpread = targetSpread;
                 displayedSpreadIndex = targetSpreadIndex;
             }
             return;
         }
 
-        if (displayedSpreadIndex != targetSpreadIndex) {
+        if (displayedSpreadIndex != targetSpreadIndex || displayedSpread != targetSpread) {
             displayedSpread = targetSpread;
             displayedSpreadIndex = targetSpreadIndex;
         }
@@ -145,7 +250,7 @@ public final class BookViewState {
     }
 
     void syncDisplayedSpreadFromController(BookScreenController controller) {
-        displayedSpread = controller.currentSpread();
+        displayedSpread = controller.currentDisplayedSpread();
         displayedSpreadIndex = controller.spreadIndex();
         targetSpread = displayedSpread;
         targetSpreadIndex = displayedSpreadIndex;
@@ -224,6 +329,10 @@ public final class BookViewState {
         return textAlpha;
     }
 
+    float effectiveContentAlpha() {
+        return textAlpha * bountyModeAlpha;
+    }
+
     boolean closedBookHovered() {
         return closedBookHovered;
     }
@@ -249,7 +358,7 @@ public final class BookViewState {
     }
 
     public void refreshDisplayedSpread(BookScreenController controller) {
-        displayedSpread = controller.currentSpread();
+        displayedSpread = controller.currentDisplayedSpread();
         displayedSpreadIndex = controller.spreadIndex();
         targetSpread = displayedSpread;
         targetSpreadIndex = displayedSpreadIndex;
@@ -283,6 +392,38 @@ public final class BookViewState {
         this.hoveredProjectionButton = hoveredProjectionButton;
     }
 
+    float bookmarkAlpha() {
+        return bookmarkAlpha;
+    }
+
+    float bookmarkTuckAmount() {
+        return bookmarkTuckAmount;
+    }
+
+    float bookmarkPopAmount() {
+        return bookmarkPopAmount;
+    }
+
+    float bookmarkHoverAmount() {
+        return bookmarkHoverAmount;
+    }
+
+    float bookmarkClickAmount() {
+        return bookmarkClickAmount;
+    }
+
+    boolean bookmarkHovered() {
+        return bookmarkHovered;
+    }
+
+    boolean bookmarkInteractable() {
+        return bookmarkInteractable;
+    }
+
+    boolean bountyTransitionRunning() {
+        return bountyTransitionPhase != BountyTransitionPhase.NONE;
+    }
+
     private static float wrapDegrees(float degrees) {
         float wrapped = degrees % 360.0f;
         if (wrapped >= 180.0f) {
@@ -298,6 +439,14 @@ public final class BookViewState {
         STABLE,
         FADING_OUT,
         HIDDEN_DURING_FLIP,
+        FADING_IN
+    }
+
+    private enum BountyTransitionPhase {
+        NONE,
+        FADING_OUT_TO_BOUNTY,
+        FADING_OUT_TO_READING,
+        FADING_OUT_TO_BOUNTY_REFRESH,
         FADING_IN
     }
 }

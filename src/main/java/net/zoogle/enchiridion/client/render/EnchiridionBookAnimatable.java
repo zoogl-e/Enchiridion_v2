@@ -18,6 +18,7 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
     static final String MAGIC_TEXT_LEFT_BONE = "magic_text_left";
     static final String MAGIC_TEXT_RIGHT_BONE = "magic_text_right";
     static final String MAGIC_TEXT_FRONT_LEFT_BONE = "magic_text_front_left";
+    static final String MAGIC_TEXT_RIGHT_FRONT_BONE = "magic_text_right_front";
 
     private static final RawAnimation ARRIVAL_ANIMATION = rawAnimationFor(BookAnimState.ARRIVING);
     private static final RawAnimation OPENING_ANIMATION = rawAnimationFor(BookAnimState.OPENING);
@@ -55,6 +56,11 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
     private BookFrontCoverCardState frontCoverCardState = BookFrontCoverCardState.hidden();
     private ReadableSurfaceTarget leftSurfaceTarget = ReadableSurfaceTarget.none();
     private ReadableSurfaceTarget rightSurfaceTarget = ReadableSurfaceTarget.none();
+    private float bookmarkAlpha;
+    private float bookmarkTuckAmount = 1.0f;
+    private float bookmarkPopAmount;
+    private float bookmarkHoverAmount;
+    private float bookmarkClickAmount;
 
     public void setAnimState(BookAnimState animState) {
         this.animState = animState;
@@ -112,6 +118,40 @@ final class EnchiridionBookAnimatable implements GeoAnimatable {
 
     public ReadableSurfaceTarget rightSurfaceTarget() {
         return rightSurfaceTarget;
+    }
+
+    public void setBookmarkPoseState(
+            float bookmarkAlpha,
+            float bookmarkTuckAmount,
+            float bookmarkPopAmount,
+            float bookmarkHoverAmount,
+            float bookmarkClickAmount
+    ) {
+        this.bookmarkAlpha = Math.clamp(bookmarkAlpha, 0.0f, 1.0f);
+        this.bookmarkTuckAmount = Math.clamp(bookmarkTuckAmount, 0.0f, 1.0f);
+        this.bookmarkPopAmount = Math.clamp(bookmarkPopAmount, 0.0f, 1.0f);
+        this.bookmarkHoverAmount = Math.clamp(bookmarkHoverAmount, 0.0f, 1.0f);
+        this.bookmarkClickAmount = Math.clamp(bookmarkClickAmount, 0.0f, 1.0f);
+    }
+
+    public float bookmarkAlpha() {
+        return bookmarkAlpha;
+    }
+
+    public float bookmarkTuckAmount() {
+        return bookmarkTuckAmount;
+    }
+
+    public float bookmarkPopAmount() {
+        return bookmarkPopAmount;
+    }
+
+    public float bookmarkHoverAmount() {
+        return bookmarkHoverAmount;
+    }
+
+    public float bookmarkClickAmount() {
+        return bookmarkClickAmount;
     }
 
     @Override

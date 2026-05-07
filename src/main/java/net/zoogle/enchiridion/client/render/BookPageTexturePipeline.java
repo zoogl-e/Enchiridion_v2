@@ -6,8 +6,10 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FastColor;
 import net.zoogle.enchiridion.Enchiridion;
+import net.zoogle.enchiridion.api.BookContentMode;
 import net.zoogle.enchiridion.api.BookPage;
 import net.zoogle.enchiridion.api.BookPageSide;
+import net.zoogle.enchiridion.api.BookSection;
 import net.zoogle.enchiridion.api.BookSpread;
 import net.zoogle.enchiridion.client.page.PageInteractiveNode;
 
@@ -39,6 +41,10 @@ final class BookPageTexturePipeline {
     private static final float RIGHT_V0 = 10.84375f;
     private static final float RIGHT_U1 = 16.0f;
     private static final float RIGHT_V1 = 16.0f;
+    private static final float FRONT_RIGHT_U0 = 11.53125f;
+    private static final float FRONT_RIGHT_V0 = 0.4375f;
+    private static final float FRONT_RIGHT_U1 = 15.6875f;
+    private static final float FRONT_RIGHT_V1 = 5.59375f;
 
     // Hook for future magical polish pass (glow/intensity)
     private static final int MAGIC_TEXT_PANEL_ALPHA = 0;
@@ -53,6 +59,10 @@ final class BookPageTexturePipeline {
     private final ResourceLocation rightTextureLocation;
 
     private int lastSpreadIndex = Integer.MIN_VALUE;
+    private int lastSpreadContentKey = Integer.MIN_VALUE;
+    private BookContentMode lastContentMode;
+    private BookSection lastBookSection;
+    private boolean lastSuppressPageNumbers;
     private int lastTextAlpha = Integer.MIN_VALUE;
     private long lastAnimationBucket = Long.MIN_VALUE;
     private int lastGlitchStrength = Integer.MIN_VALUE;
@@ -80,11 +90,12 @@ final class BookPageTexturePipeline {
         return new RenderRegionSize(regionW, regionH);
     }
 
-    static LocalTexturePoint localPointForTextureUv(BookPageSide pageSide, float texU, float texV) {
-        float u0 = pageSide == BookPageSide.LEFT ? LEFT_U0 / UV_SPACE_SIZE : RIGHT_U0 / UV_SPACE_SIZE;
-        float v0 = pageSide == BookPageSide.LEFT ? LEFT_V0 / UV_SPACE_SIZE : RIGHT_V0 / UV_SPACE_SIZE;
-        float u1 = pageSide == BookPageSide.LEFT ? LEFT_U1 / UV_SPACE_SIZE : RIGHT_U1 / UV_SPACE_SIZE;
-        float v1 = pageSide == BookPageSide.LEFT ? LEFT_V1 / UV_SPACE_SIZE : RIGHT_V1 / UV_SPACE_SIZE;
+    static LocalTexturePoint localPointForTextureUv(BookPageSide pageSide, String boneName, float texU, float texV) {
+        boolean frontRightPlane = EnchiridionBookAnimatable.MAGIC_TEXT_RIGHT_FRONT_BONE.equals(boneName);
+        float u0 = pageSide == BookPageSide.LEFT ? LEFT_U0 / UV_SPACE_SIZE : rightU0(frontRightPlane) / UV_SPACE_SIZE;
+        float v0 = pageSide == BookPageSide.LEFT ? LEFT_V0 / UV_SPACE_SIZE : rightV0(frontRightPlane) / UV_SPACE_SIZE;
+        float u1 = pageSide == BookPageSide.LEFT ? LEFT_U1 / UV_SPACE_SIZE : rightU1(frontRightPlane) / UV_SPACE_SIZE;
+        float v1 = pageSide == BookPageSide.LEFT ? LEFT_V1 / UV_SPACE_SIZE : rightV1(frontRightPlane) / UV_SPACE_SIZE;
         float minU = Math.min(u0, u1);
         float maxU = Math.max(u0, u1);
         float minV = Math.min(v0, v1);
@@ -92,7 +103,9 @@ final class BookPageTexturePipeline {
         if (texU < minU - 0.0001f || texU > maxU + 0.0001f || texV < minV - 0.0001f || texV > maxV + 0.0001f) {
             return null;
         }
-        RenderRegionSize size = renderRegionSize(pageSide);
+        RenderRegionSize size = frontRightPlane
+                ? renderRegionSize(rightU0(true), rightV0(true), rightU1(true), rightV1(true))
+                : renderRegionSize(pageSide);
         float normalizedU = (texU - minU) / Math.max(0.0001f, maxU - minU);
         float normalizedV = (texV - minV) / Math.max(0.0001f, maxV - minV);
         return new LocalTexturePoint(normalizedU * size.width(), normalizedV * size.height());
@@ -100,7 +113,10 @@ final class BookPageTexturePipeline {
 
     public TextureSet textureSetFor(
             BookSpread spread,
+            BookContentMode contentMode,
+            BookSection bookSection,
             int spreadIndex,
+            boolean suppressPageNumbers,
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
@@ -110,16 +126,30 @@ final class BookPageTexturePipeline {
             PageInteractiveNode rightHoveredInteractiveNode
     ) {
         int textAlphaKey = quantizedVisualKey(textAlpha, TEXT_ALPHA_REFRESH_STEPS);
+        int spreadContentKey = spread == null ? 0 : spread.hashCode();
+        BookContentMode contentModeKey = contentMode != null ? contentMode : BookContentMode.READING;
+        BookSection bookSectionKey = bookSection != null ? bookSection : BookSection.INTERIOR;
         int glitchStrengthKey = quantizedVisualKey(glitchStrength, GLITCH_REFRESH_STEPS);
         int focusedPageSideKey = focusedPageSide == null ? -1 : focusedPageSide.ordinal();
         int interactiveStateKey = 31 * interactiveNodeListKey(leftInteractiveNodes) + interactiveNodeListKey(rightInteractiveNodes);
         interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(leftHoveredInteractiveNode);
         interactiveStateKey = 31 * interactiveStateKey + interactiveNodeKey(rightHoveredInteractiveNode);
         long animationBucket = currentAnimationBucket(textAlphaKey, glitchStrengthKey);
-        if (spreadIndex != lastSpreadIndex || textAlphaKey != lastTextAlpha || animationBucket != lastAnimationBucket || glitchStrengthKey != lastGlitchStrength || focusedPageSideKey != lastFocusedPageSide || interactiveStateKey != lastInteractiveStateKey) {
+        if (spreadIndex != lastSpreadIndex
+                || spreadContentKey != lastSpreadContentKey
+                || contentModeKey != lastContentMode
+                || bookSectionKey != lastBookSection
+                || suppressPageNumbers != lastSuppressPageNumbers
+                || textAlphaKey != lastTextAlpha
+                || animationBucket != lastAnimationBucket
+                || glitchStrengthKey != lastGlitchStrength
+                || focusedPageSideKey != lastFocusedPageSide
+                || interactiveStateKey != lastInteractiveStateKey) {
             updateMagicPlaneTextures(
                     spread,
+                    bookSectionKey,
                     spreadIndex,
+                    suppressPageNumbers,
                     textAlpha,
                     glitchStrength,
                     focusedPageSide,
@@ -129,6 +159,10 @@ final class BookPageTexturePipeline {
                     rightHoveredInteractiveNode
             );
             lastSpreadIndex = spreadIndex;
+            lastSpreadContentKey = spreadContentKey;
+            lastContentMode = contentModeKey;
+            lastBookSection = bookSectionKey;
+            lastSuppressPageNumbers = suppressPageNumbers;
             lastTextAlpha = textAlphaKey;
             lastAnimationBucket = animationBucket;
             lastGlitchStrength = glitchStrengthKey;
@@ -140,7 +174,9 @@ final class BookPageTexturePipeline {
 
     private void updateMagicPlaneTextures(
             BookSpread spread,
+            BookSection bookSection,
             int spreadIndex,
+            boolean suppressPageNumbers,
             float textAlpha,
             float glitchStrength,
             BookPageSide focusedPageSide,
@@ -149,13 +185,52 @@ final class BookPageTexturePipeline {
             PageInteractiveNode leftHoveredInteractiveNode,
             PageInteractiveNode rightHoveredInteractiveNode
     ) {
-        // Front cover (spread 0) should never show page numbers.
-        Integer leftPageNumber = spreadIndex == 0 ? null : (spreadIndex * 2) + 1;
-        Integer rightPageNumber = spreadIndex == 0 ? null : leftPageNumber + 1;
+        Integer leftPageNumber = suppressPageNumbers ? null : (spreadIndex * 2) + 1;
+        Integer rightPageNumber = suppressPageNumbers ? null : leftPageNumber + 1;
         float leftFocusStrength = focusedPageSide == BookPageSide.LEFT ? 1.0f : 0.0f;
         float rightFocusStrength = focusedPageSide == BookPageSide.RIGHT ? 1.0f : 0.0f;
+        boolean frontSpecial = bookSection == BookSection.FRONT_SPECIAL;
         updatePlaneTexture(leftDynamicTexture, spread.left(), LEFT_U0, LEFT_V0, LEFT_U1, LEFT_V1, textAlpha, focusGlitchStrength(glitchStrength, leftFocusStrength), leftFocusStrength, 0, true, leftPageNumber, leftInteractiveNodes, leftHoveredInteractiveNode);
-        updatePlaneTexture(rightDynamicTexture, spread.right(), RIGHT_U0, RIGHT_V0, RIGHT_U1, RIGHT_V1, textAlpha, focusGlitchStrength(glitchStrength, rightFocusStrength), rightFocusStrength, PageCanvasRenderer.RIGHT_PAGE_INSET, false, rightPageNumber, rightInteractiveNodes, rightHoveredInteractiveNode);
+        updatePlaneTexture(
+                rightDynamicTexture,
+                spread.right(),
+                rightU0(frontSpecial),
+                rightV0(frontSpecial),
+                rightU1(frontSpecial),
+                rightV1(frontSpecial),
+                textAlpha,
+                focusGlitchStrength(glitchStrength, rightFocusStrength),
+                rightFocusStrength,
+                PageCanvasRenderer.RIGHT_PAGE_INSET,
+                false,
+                rightPageNumber,
+                rightInteractiveNodes,
+                rightHoveredInteractiveNode
+        );
+    }
+
+    private static RenderRegionSize renderRegionSize(float u0, float v0, float u1, float v1) {
+        int regionX = uvToPixelX(u0, DYNAMIC_TEXTURE_SIZE);
+        int regionY = uvToPixelY(v0, DYNAMIC_TEXTURE_SIZE);
+        int regionW = Math.max(4, uvToPixelX(u1, DYNAMIC_TEXTURE_SIZE) - regionX);
+        int regionH = Math.max(4, uvToPixelY(v1, DYNAMIC_TEXTURE_SIZE) - regionY);
+        return new RenderRegionSize(regionW, regionH);
+    }
+
+    private static float rightU0(boolean frontSpecial) {
+        return frontSpecial ? FRONT_RIGHT_U0 : RIGHT_U0;
+    }
+
+    private static float rightV0(boolean frontSpecial) {
+        return frontSpecial ? FRONT_RIGHT_V0 : RIGHT_V0;
+    }
+
+    private static float rightU1(boolean frontSpecial) {
+        return frontSpecial ? FRONT_RIGHT_U1 : RIGHT_U1;
+    }
+
+    private static float rightV1(boolean frontSpecial) {
+        return frontSpecial ? FRONT_RIGHT_V1 : RIGHT_V1;
     }
 
     private static float focusGlitchStrength(float baseGlitchStrength, float focusStrength) {

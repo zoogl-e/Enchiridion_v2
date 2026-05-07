@@ -26,6 +26,9 @@ public final class LevelRpgJournalInteractionBridge {
     private static final String UNLOCK_TREE_NODE_PAYLOAD_CLASS = "net.zoogle.levelrpg.net.payload.UnlockTreeNodeRequestPayload";
     private static final String CLIENT_FACTORY_CLASS = "net.zoogle.levelrpg.client.journal.ClientJournalSnapshotFactory";
     private static final String SKILL_TREE_REGISTRY_CLASS = "net.zoogle.levelrpg.skilltree.SkillTreeRegistry";
+    private static final String CLIENT_PROFILE_CACHE_CLASS = "net.zoogle.levelrpg.client.data.ClientProfileCache";
+    private static final String CLAIM_BOUNTY_OFFER_PAYLOAD_CLASS = "net.zoogle.levelrpg.net.payload.ClaimBountyOfferPayload";
+    private static final String ABANDON_SOLO_BOUNTY_PAYLOAD_CLASS = "net.zoogle.levelrpg.net.payload.AbandonSoloBountyPayload";
     private static final String PACKET_DISTRIBUTOR_CLASS = "net.neoforged.neoforge.network.PacketDistributor";
 
     private LevelRpgJournalInteractionBridge() {}
@@ -234,6 +237,112 @@ public final class LevelRpgJournalInteractionBridge {
             return false;
         }
         return bookScreen.openArchetypeReel();
+    }
+
+    public static ResourceLocation activeSoloBountyId(BookContext context) {
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method getter = cacheClass.getMethod("getActiveSoloBountyId");
+            Object value = getter.invoke(null);
+            return value instanceof ResourceLocation rl ? rl : null;
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    public static boolean isActiveSoloBountyObjectiveMet(BookContext context) {
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method getter = cacheClass.getMethod("isActiveSoloBountyObjectiveMet");
+            Object value = getter.invoke(null);
+            return value instanceof Boolean b && b;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    /** Synced count for countable bounty objectives (kills, ore, etc.). */
+    public static int activeSoloBountyProgress(BookContext context) {
+        if (context == null) {
+            return 0;
+        }
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method getter = cacheClass.getMethod("getActiveSoloBountyProgress");
+            Object value = getter.invoke(null);
+            return value instanceof Number n ? Math.max(0, n.intValue()) : 0;
+        } catch (ReflectiveOperationException ignored) {
+            return 0;
+        }
+    }
+
+    public static int bountyOfferTier(BookContext context) {
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method getter = cacheClass.getMethod("getBountyOfferTier");
+            Object value = getter.invoke(null);
+            return value instanceof Number n ? Math.clamp(n.intValue(), 1, 3) : 1;
+        } catch (ReflectiveOperationException ignored) {
+            return 1;
+        }
+    }
+
+    public static boolean hasCompletedBounty(BookContext context, ResourceLocation bountyId) {
+        if (bountyId == null) {
+            return false;
+        }
+        try {
+            Class<?> cacheClass = Class.forName(CLIENT_PROFILE_CACHE_CLASS);
+            Method getter = cacheClass.getMethod("hasCompletedBounty", ResourceLocation.class);
+            Object value = getter.invoke(null, bountyId);
+            return value instanceof Boolean b && b;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    public static boolean requestClaimBountyOffer(BookContext context, ResourceLocation bountyId) {
+        if (context == null || context.minecraft() == null || context.player() == null || bountyId == null) {
+            return false;
+        }
+        try {
+            Class<?> payloadClass = Class.forName(CLAIM_BOUNTY_OFFER_PAYLOAD_CLASS);
+            Constructor<?> constructor = payloadClass.getConstructor(ResourceLocation.class);
+            Object payload = constructor.newInstance(bountyId);
+            Class<?> packetDistributor = Class.forName(PACKET_DISTRIBUTOR_CLASS);
+            Method sendToServer = packetDistributor.getMethod(
+                    "sendToServer",
+                    net.minecraft.network.protocol.common.custom.CustomPacketPayload.class,
+                    net.minecraft.network.protocol.common.custom.CustomPacketPayload[].class
+            );
+            sendToServer.invoke(null, payload, (Object) new net.minecraft.network.protocol.common.custom.CustomPacketPayload[0]);
+            return true;
+        } catch (ReflectiveOperationException exception) {
+            context.player().displayClientMessage(Component.literal("Bounty claim is unavailable right now."), true);
+            return false;
+        }
+    }
+
+    public static boolean requestAbandonSoloBounty(BookContext context) {
+        if (context == null || context.minecraft() == null || context.player() == null) {
+            return false;
+        }
+        try {
+            Class<?> payloadClass = Class.forName(ABANDON_SOLO_BOUNTY_PAYLOAD_CLASS);
+            Constructor<?> constructor = payloadClass.getConstructor();
+            Object payload = constructor.newInstance();
+            Class<?> packetDistributor = Class.forName(PACKET_DISTRIBUTOR_CLASS);
+            Method sendToServer = packetDistributor.getMethod(
+                    "sendToServer",
+                    net.minecraft.network.protocol.common.custom.CustomPacketPayload.class,
+                    net.minecraft.network.protocol.common.custom.CustomPacketPayload[].class
+            );
+            sendToServer.invoke(null, payload, (Object) new net.minecraft.network.protocol.common.custom.CustomPacketPayload[0]);
+            return true;
+        } catch (ReflectiveOperationException exception) {
+            context.player().displayClientMessage(Component.literal("Bounty abandon is unavailable right now."), true);
+            return false;
+        }
     }
 
     public static boolean beginArchetypeBinding(BookContext context, String focusId) {

@@ -87,10 +87,10 @@ public final class BookAnimController {
     }
 
     public boolean requestFrontSpread() {
-        if (state != BookAnimState.IDLE_OPEN || currentSpread <= 0) {
+        if (state != BookAnimState.IDLE_OPEN) {
             return false;
         }
-        pendingSpread = currentSpread - 1;
+        pendingSpread = currentSpread;
         enterFlip(BookAnimState.FLIPPING_FRONT);
         return true;
     }
@@ -99,7 +99,7 @@ public final class BookAnimController {
         if (state != BookAnimState.IDLE_OPEN) {
             return false;
         }
-        pendingSpread = currentSpread + 1;
+        pendingSpread = currentSpread;
         enterFlip(BookAnimState.FLIPPING_FRONT_TO_ORIGIN);
         return true;
     }
@@ -108,16 +108,16 @@ public final class BookAnimController {
         if (state != BookAnimState.IDLE_OPEN) {
             return false;
         }
-        pendingSpread = currentSpread + 1;
+        pendingSpread = currentSpread;
         enterFlip(BookAnimState.FLIPPING_BACK);
         return true;
     }
 
     public boolean requestBackSpreadToOrigin() {
-        if (state != BookAnimState.IDLE_OPEN || currentSpread <= 0) {
+        if (state != BookAnimState.IDLE_OPEN) {
             return false;
         }
-        pendingSpread = currentSpread - 1;
+        pendingSpread = currentSpread;
         enterFlip(BookAnimState.FLIPPING_BACK_TO_ORIGIN);
         return true;
     }

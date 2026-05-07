@@ -1,6 +1,5 @@
 package net.zoogle.enchiridion.client.ui;
 
-import net.minecraft.network.chat.Component;
 import net.zoogle.enchiridion.api.BookInteractiveRegion;
 import net.zoogle.enchiridion.api.BookPageElement;
 import net.zoogle.enchiridion.api.BookPageSide;
@@ -71,8 +70,8 @@ final class BookInteractionResolver {
         List<PageInteractiveNode> resolved = new ArrayList<>();
         for (ResolvedBookInteractionTarget target : resolvedTargets(
                 displayedSpread,
-                controller.definition().provider().interactiveRegions(controller.context(), displayedSpreadIndex),
-                controller.definition().provider().trackedInteractiveRegions(controller.context(), displayedSpreadIndex)
+                controller.currentInteractiveRegions(displayedSpreadIndex),
+                controller.currentTrackedInteractiveRegions(displayedSpreadIndex)
         )) {
             resolved.add(buildNode(
                     controller,
